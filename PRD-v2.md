@@ -55,35 +55,44 @@ v1 是一个本地运行的内部工具，轮询 5 个交易所的永续合约 o
 #### 3.1.1 主页面 — 滑点对比网格
 
 ```
-┌─────────────────────────────────────────────────────┐
-│  Perps Slippage Monitor     [EN] [🌙] ● 实时 10:32  │
-│  下单金额: [$10K] [$50K] [$100K✓] [$500K] [$1M]    │
-│  自定义: [________] [计算]    杠杆: [10x ▼]         │
-├─────────────────────────────────────────────────────┤
-│                                                     │
-│  BTC-PERP                                           │
-│  ┌──────────┬────────┬────────┬────────┬──────────┐ │
-│  │ 交易所   │ 滑点   │ 手续费 │ 总成本  │ 成本金额 │ │
-│  ├──────────┼────────┼────────┼────────┼──────────┤ │
-│  │ HL ✓Best │ 0.07   │ 4.5    │ 4.57   │ $45.70   │ │
-│  │ Binance  │ 0.01   │ 5.0    │ 5.01   │ $50.10   │ │
-│  │ Bybit    │ 0.01   │ 5.5    │ 5.51   │ $55.10   │ │
-│  │ SoDEX    │ 1.20   │ 4.0    │ 5.20   │ $52.00   │ │
-│  └──────────┴────────┴────────┴────────┴──────────┘ │
-│                                                     │
-│  ETH-PERP                                           │
-│  [同上结构]                                          │
-│                                                     │
-│  SOL-PERP    GOLD-PERP                              │
-│  [同上]      [同上]                                  │
-└─────────────────────────────────────────────────────┘
+┌───────────────────────────────────────────────────────────┐
+│  Perps Slippage Monitor              [EN] [🌙] ● 实时    │
+├───────────────────────────────────────────────────────────┤
+│                                                           │
+│  [BTC ▼] [🔍 搜索币对...]                                │
+│                                                           │
+│  BTC-PERP  ·  $73,042  ·  更新于 2 分钟前                │
+│                                                           │
+│  下单金额: [$10K] [$50K] [$100K✓] [$500K] [$1M]          │
+│  自定义: [________] [计算]    杠杆: [10x ▼]               │
+│                                                           │
+│  ┌──────────────┬────────┬────────┬────────┬──────────┐   │
+│  │ 交易所       │ 滑点   │ 手续费 │ 总成本  │ 成本金额 │   │
+│  ├──────────────┼────────┼────────┼────────┼──────────┤   │
+│  │ Hyperliquid ✓│ 0.07   │ 4.5    │ 4.57   │ $45.70   │   │
+│  │ SoDEX        │ 1.20   │ 4.0    │ 5.20   │ $52.00   │   │
+│  │ Aster        │ 0.15   │ 3.5    │ 3.65   │ $36.50   │   │
+│  │ Binance      │ 0.01   │ 5.0    │ 5.01   │ $50.10   │   │
+│  │ Bybit        │ 0.01   │ 5.5    │ 5.51   │ $55.10   │   │
+│  │ Bitget       │ 0.02   │ 5.0    │ 5.02   │ $50.20   │   │
+│  │ EdgeX        │ 0.50   │ 3.0    │ 3.50   │ $35.00   │   │
+│  │ MEXC         │ 0.03   │ 6.0    │ 6.03   │ $60.30   │   │
+│  └──────────────┴────────┴────────┴────────┴──────────┘   │
+│                                    按总成本升序排列 ▲      │
+│                                                           │
+│  热门: [BTC] [ETH] [SOL] [GOLD] [XRP] [DOGE] [ARB]       │
+└───────────────────────────────────────────────────────────┘
 ```
 
 **核心交互：**
+- **默认只展示一个币对**（BTC），页面聚焦、信息密度高
+- **币对切换器**：下拉选择或搜索输入（支持模糊搜索，如输入 "eth" 匹配 ETH-PERP）
+- 底部热门币对快捷按钮，一键切换
 - 预设金额按钮：$10K / $50K / $100K（默认）/ $500K / $1M
 - 自定义金额输入：用户输入任意 USD 金额 → 调用 API → 即时显示结果
 - 杠杆下拉：1x-100x，影响「占本金%」的显示
-- 交易所/交易对筛选
+- 交易所列表**默认全部显示**，用户可隐藏特定所
+- 结果**按总成本升序排列**，最优在最上面
 - 最优/最差高亮（绿/红）
 - 数据时效指示：「数据更新于 X 分钟前」
 
@@ -92,6 +101,72 @@ v1 是一个本地运行的内部工具，轮询 5 个交易所的永续合约 o
 - 中文（默认）/ English 切换
 - 响应式适配移动端
 - 页面可截图分享（适合 KOL 引用）
+
+### 3.2 API 文档页面（/docs）
+
+独立页面，面向 AI Agent 和量化开发者，路径 `/docs`。
+
+```
+┌───────────────────────────────────────────────────────────┐
+│  Slippage Monitor API                     [← 返回 Dashboard]│
+├───────────────────────────────────────────────────────────┤
+│                                                           │
+│  ## 快速开始                                              │
+│                                                           │
+│  curl https://slippage.example.com/api/v1/slippage/       │
+│    compare?pair=BTC&amount=100000                         │
+│                                                           │
+│  ## Endpoints                                             │
+│                                                           │
+│  ▸ GET /api/v1/slippage/compare    [Try it ▶]            │
+│    跨交易所滑点对比                                       │
+│                                                           │
+│  ▸ GET /api/v1/slippage/all        [Try it ▶]            │
+│    全部币对 × 全部交易所批量查询                           │
+│                                                           │
+│  ▸ GET /api/v1/exchanges           [Try it ▶]            │
+│    支持的交易所列表及费率                                  │
+│                                                           │
+│  ▸ GET /api/v1/pairs               [Try it ▶]            │
+│    支持的交易对列表                                       │
+│                                                           │
+│  ▸ GET /api/v1/status              [Try it ▶]            │
+│    系统状态及各交易所健康度                                │
+│                                                           │
+│  ## 代码示例                                              │
+│                                                           │
+│  [Python] [JavaScript] [curl]                             │
+│                                                           │
+│  ```python                                                │
+│  import requests                                          │
+│  r = requests.get("https://slippage.example.com/          │
+│    api/v1/slippage/compare",                              │
+│    params={"pair": "BTC", "amount": 100000})              │
+│  data = r.json()                                          │
+│  best = data["best_exchange"]                             │
+│  ```                                                      │
+│                                                           │
+│  ## Rate Limiting                                         │
+│  60 requests/min per IP | X-RateLimit-* headers           │
+│                                                           │
+│  ## 数据说明                                              │
+│  - 数据每 5 分钟刷新，响应含 data_age_seconds 字段        │
+│  - 滑点基于 orderbook 深度模拟 Market Order               │
+│  - 手续费为各所基础 Taker 费率（未含 VIP/代币折扣）       │
+│  - 流动性不足时 sufficient_liquidity=false                 │
+│                                                           │
+│  ## OpenAPI Spec                                          │
+│  [下载 openapi.yaml]                                      │
+└───────────────────────────────────────────────────────────┘
+```
+
+**功能要求：**
+- 每个 endpoint 有交互式 "Try it" 按钮（输入参数 → 实时请求 → 展示响应）
+- 代码示例支持 Python / JavaScript / curl 三种语言切换
+- 请求/响应 JSON 格式化展示
+- Rate limit 说明和错误码文档
+- 数据来源和计算方法透明说明
+- 可下载 OpenAPI/Swagger YAML spec
 
 ### 3.2 公开 API
 
@@ -341,6 +416,8 @@ slippage-monitor-v2/
 
 ### 5.1 v2 支持矩阵
 
+**Phase 1（上线）：**
+
 | Exchange | Type | Adapter | Taker Fee | Quote | GOLD 映射 |
 |----------|------|---------|-----------|-------|-----------|
 | Binance | CEX | CCXT | 5.0 bps | USDT | PAXG |
@@ -348,7 +425,19 @@ slippage-monitor-v2/
 | Hyperliquid | DEX | CCXT | 4.5 bps | USDC | PAXG |
 | SoDEX | DEX | Custom | 4.0 bps | USD | XAUT |
 
-> Lighter 保留 adapter 代码但默认关闭。可在 config 中启用。
+**Phase 2（扩展，上线后 1-2 周）：**
+
+| Exchange | Type | Adapter | Taker Fee | 优先级 | 备注 |
+|----------|------|---------|-----------|--------|------|
+| Aster | DEX | Custom | 3.5 bps | P0 | 新兴 DEX，费率激进 |
+| EdgeX | DEX | Custom | TBD | P0 | 需调研 API |
+| Bitget | CEX | CCXT | 5.0 bps | P1 | CCXT 原生支持 |
+| MEXC | CEX | CCXT | 6.0 bps | P1 | CCXT 原生支持 |
+| OKX | CEX | CCXT | 5.0 bps | P1 | CCXT 原生支持 |
+| dYdX | DEX | Custom | 5.0 bps | P2 | 需调研 v4 API |
+| Lighter | DEX | Custom (已有) | 0 bps | P2 | adapter 已实现 |
+
+> CEX 类使用 CCXT 统一接入，通常 1 小时内完成。DEX 需要自定义 adapter。
 
 ### 5.2 新增交易所流程
 
@@ -388,40 +477,51 @@ slippage-monitor-v2/
 
 ---
 
-## 7. 迭代计划
+## 7. 实施计划
 
-### Phase 1: 核心功能（1-2 周）
+v2 作为一个整体版本交付，不分阶段。以下为完整 checklist：
 
-- [ ] Next.js 项目搭建，从 v1 迁移核心模块
-- [ ] Data Collector：定时抓取 + 缓存
-- [ ] API Routes：/slippage/compare、/slippage/all、/exchanges、/pairs、/status
-- [ ] 前端：滑点对比网格 + 预设金额选择器
-- [ ] 部署到 VPS + PM2
-
-### Phase 2: 用户体验（1 周）
-
-- [ ] 自定义金额输入 + 即时计算
-- [ ] 交易所/交易对筛选
-- [ ] 杠杆选择器
-- [ ] 数据时效指示
-- [ ] 明暗主题 + 中英文
-- [ ] 响应式移动端适配
-
-### Phase 3: API 产品化（1 周）
-
-- [ ] OpenAPI spec + Swagger UI at /docs
-- [ ] 代码示例 (Python / JS / curl)
-- [ ] Rate limiting middleware
+### 后端
+- [ ] Next.js 项目搭建，从 v1 迁移核心模块（adapters, slippage engine）
+- [ ] Data Collector：node-cron 定时抓取（5 min）+ 内存缓存
+- [ ] 预计算常见金额滑点（$10K/$50K/$100K/$500K/$1M）
+- [ ] API Routes 实现：/slippage/compare, /slippage/all, /exchanges, /pairs, /status
+- [ ] 自定义金额 API：从缓存 orderbook 即时计算
+- [ ] Rate limiting middleware（60 req/min per IP）
 - [ ] CORS 配置
-- [ ] 错误响应标准化
+- [ ] 错误响应标准化（统一 error code + message 格式）
+- [ ] 结构化日志
+- [ ] Health check endpoint
 
-### Phase 4: 增长（持续）
+### 前端
+- [ ] 主页面：单币对视图（默认 BTC）+ 币对切换器/搜索
+- [ ] 滑点对比表格（按总成本升序排列，最优/最差高亮）
+- [ ] 预设金额选择 + 自定义金额输入
+- [ ] 杠杆选择器
+- [ ] 热门币对快捷切换
+- [ ] 数据时效指示（更新于 X 分钟前）
+- [ ] 明暗主题 + 中英文切换
+- [ ] 响应式移动端适配
+- [ ] SEO（meta tags、OG image、结构化数据）
+- [ ] URL 带参数可分享（如 `?pair=ETH&amount=50000`）
 
-- [ ] SEO 优化（meta tags、OG image）
-- [ ] 分享功能（URL 带参数，可分享特定对比）
-- [ ] API Key 注册系统（当 DAU > 1000）
-- [ ] 新增交易所（OKX、dYdX、Aster 等）
-- [ ] 历史数据存储 + 趋势图（v3 scope）
+### API 文档页面（/docs）
+- [ ] 交互式 API Explorer（Try it 按钮）
+- [ ] 代码示例：Python / JavaScript / curl
+- [ ] Rate limit 说明 + 错误码文档
+- [ ] 数据来源与计算方法说明
+- [ ] OpenAPI/Swagger YAML spec 下载
+
+### 交易所接入
+- [ ] Binance、Bybit、Hyperliquid、SoDEX（从 v1 迁移）
+- [ ] 新增：Aster、EdgeX
+- [ ] 新增：Bitget、MEXC、OKX（CCXT 快速接入）
+
+### 部署
+- [ ] VPS + PM2 部署
+- [ ] 域名 + HTTPS
+- [ ] 零停机部署（PM2 reload）
+- [ ] 监控告警（uptime + exchange health）
 
 ---
 
