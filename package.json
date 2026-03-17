@@ -5,17 +5,26 @@
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
-    "build": "tsc",
-    "start": "node --loader ts-node/esm src/index.ts",
-    "dev": "tsx src/index.ts",
-    "web": "tsx src/index.ts --web"
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "cli": "tsx src/cli/index.ts",
+    "cli:web": "tsx src/cli/index.ts --web"
   },
   "dependencies": {
     "ccxt": "^4.4.0",
-    "cli-table3": "^0.6.5"
+    "cli-table3": "^0.6.5",
+    "next": "^16.1.7",
+    "node-cron": "^4.2.1",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "@types/node-cron": "^3.0.11",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
     "tsx": "^4.19.0",
     "typescript": "^5.6.0"
   }
