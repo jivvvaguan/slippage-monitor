@@ -1,3 +1,11 @@
 node_modules/
 dist/
 *.log
+
+# Agentic Framework
+.ai/state/state.db
+.ai/state/state.db-wal
+.ai/state/state.db-shm
+.ai/logs/
+.ai/archive/
+.env

@@ -1,0 +1,13 @@
+# Project Configuration
+
+project:
+  name: ""          # Filled by init or conversation
+  description: ""   # Filled by init or conversation
+
+model: claude-opus-4-6[1m]
+
+review:
+  enabled: true
+  model: o3
+  min_score: 7
+  max_rounds: 3
