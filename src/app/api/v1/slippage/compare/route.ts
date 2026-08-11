@@ -1,0 +1,70 @@
+import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
+import { withRateLimit } from '@/lib/rate-limit';
+import { cache } from '@/lib/cache';
+import { getAdapters } from '@/lib/collector';
+import { calculateSlippage } from '@/lib/slippage';
+import { APP_CONFIG } from '@/lib/config';
+import { formatSlippageResult, sortByTotalCost, validateSide, type FormattedResult } from '@/lib/format';
+
+export const GET = withRateLimit(async (request: NextRequest) => {
+  const { searchParams } = new URL(request.url);
+  const pair = searchParams.get('pair')?.toUpperCase();
+  const amount = Number(searchParams.get('amount'));
+  const leverage = Number(searchParams.get('leverage')) || APP_CONFIG.defaultLeverage;
+  const side = validateSide(searchParams.get('side'));
+
+  if (!pair || !APP_CONFIG.pairs.includes(pair)) {
+    return NextResponse.json(
+      { error: 'invalid_pair', message: `Pair must be one of: ${APP_CONFIG.pairs.join(', ')}` },
+      { status: 400 }
+    );
+  }
+  if (!amount || amount <= 0) {
+    return NextResponse.json(
+      { error: 'invalid_amount', message: 'Amount must be a positive number (USD)' },
+      { status: 400 }
+    );
+  }
+
+  const adapters = getAdapters();
+  const isPreset = APP_CONFIG.presetAmounts.includes(amount);
+  const results: FormattedResult[] = [];
+
+  for (const adapter of adapters) {
+    if (isPreset && leverage === APP_CONFIG.defaultLeverage && side === 'buy') {
+      const precomputed = cache.getPrecomputedSlippage(adapter.name, pair);
+      const match = precomputed.find(r => r.notionalUSD === amount);
+      if (match) {
+        results.push(formatSlippageResult(match, amount));
+        continue;
+      }
+    }
+
+    const ob = cache.getOrderbook(adapter.name, pair);
+    if (ob) {
+      const result = calculateSlippage(ob, amount, leverage, adapter.getTakerFeeBps(), side);
+      results.push(formatSlippageResult(result, amount));
+    }
+  }
+
+  sortByTotalCost(results);
+
+  const updates = adapters.map(a => cache.getLastUpdate(a.name)).filter(t => t > 0);
+  const oldestUpdate = updates.length > 0 ? Math.min(...updates) : 0;
+  const refreshInterval = APP_CONFIG.refreshIntervalMs / 1000;
+  const dataAge = oldestUpdate > 0 ? Math.floor((Date.now() - oldestUpdate) / 1000) : 0;
+
+  return NextResponse.json({
+    pair,
+    amount,
+    leverage,
+    side,
+    timestamp: new Date().toISOString(),
+    data_age_seconds: dataAge,
+    next_refresh_seconds: Math.max(0, refreshInterval - dataAge),
+    results,
+    best_exchange: results[0]?.exchange ?? null,
+    worst_exchange: results[results.length - 1]?.exchange ?? null,
+  });
+});

@@ -1,6 +1,6 @@
 import ccxt from 'ccxt';
-import type { ExchangeAdapter, Orderbook } from '../types.js';
-import { normalizeOrderbook, computeMidPrice } from './base.js';
+import type { ExchangeAdapter, Orderbook } from './types';
+import { normalizeOrderbook, computeMidPrice } from './base';
 
 export interface CcxtAdapterConfig {
   exchangeId: string;
@@ -12,7 +12,7 @@ export interface CcxtAdapterConfig {
 
 export class CcxtAdapter implements ExchangeAdapter {
   name: string;
-  private exchange: ccxt.Exchange;
+  private exchange: any;
   private marketsLoaded = false;
   private availableSymbols = new Set<string>();
   private pairSymbols: Record<string, string>;

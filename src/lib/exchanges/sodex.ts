@@ -1,5 +1,5 @@
-import type { ExchangeAdapter, Orderbook, OrderbookEntry } from '../types.js';
-import { computeMidPrice } from './base.js';
+import type { ExchangeAdapter, Orderbook, OrderbookEntry } from './types';
+import { computeMidPrice } from './base';
 
 const BASE_URL = 'https://mainnet-gw.sodex.dev/futures/fapi/market/v1/public';
 

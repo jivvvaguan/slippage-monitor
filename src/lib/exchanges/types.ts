@@ -1,13 +1,3 @@
-export interface Config {
-  pairs: string[];
-  exchanges: string[];
-  orderSizesUSD: number[];
-  leverage: number;
-  refreshIntervalMs: number;
-  webPort: number;
-  orderbookDepthLimit: number;
-}
-
 export interface OrderbookEntry {
   price: number;
   amount: number; // in base currency
@@ -50,7 +40,3 @@ export interface ExchangeAdapter {
   close(): Promise<void>;
 }
 
-export interface MonitorSnapshot {
-  timestamp: number;
-  results: SlippageResult[];
-}

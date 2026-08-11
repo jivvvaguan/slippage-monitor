@@ -1,4 +1,4 @@
-import type { ExchangeAdapter, Orderbook, OrderbookEntry } from '../types.js';
+import type { ExchangeAdapter, Orderbook, OrderbookEntry } from './types';
 
 /**
  * Normalize raw [price, amount] arrays into OrderbookEntry arrays.
