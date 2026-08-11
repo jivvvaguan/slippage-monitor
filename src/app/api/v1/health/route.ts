@@ -10,19 +10,27 @@ import { getAdapters } from '@/lib/collector';
 export async function GET() {
   const adapters = getAdapters();
 
-  const exchanges = adapters.map((adapter) => ({
-    name: adapter.name,
-    status: cache.getExchangeStatus(adapter.name),
-    data_age_seconds: cache.getDataAge(adapter.name),
-  }));
+  // getDataAge returns Infinity for an exchange with no cached data, which
+  // JSON.stringify would emit as null — map it to null explicitly instead.
+  const exchanges = adapters.map((adapter) => {
+    const age = cache.getDataAge(adapter.name);
+    return {
+      name: adapter.name,
+      status: cache.getExchangeStatus(adapter.name),
+      data_age_seconds: Number.isFinite(age) ? age : null,
+    };
+  });
 
   const allOnline = exchanges.every((ex) => ex.status === 'online');
   const anyOffline = exchanges.some((ex) => ex.status === 'offline');
   const status = allOnline ? 'healthy' : anyOffline ? 'unhealthy' : 'degraded';
 
-  const dataAgeSeconds = exchanges.length
-    ? Math.max(...exchanges.map((ex) => ex.data_age_seconds))
-    : null;
+  // Staleness of the freshest-lagging exchange that actually has data;
+  // exchanges with no data at all are reported via their own status.
+  const knownAges = exchanges
+    .map((ex) => ex.data_age_seconds)
+    .filter((age): age is number => age !== null);
+  const dataAgeSeconds = knownAges.length ? Math.max(...knownAges) : null;
 
   return NextResponse.json(
     {
