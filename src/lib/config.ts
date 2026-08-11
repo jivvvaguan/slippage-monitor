@@ -20,7 +20,9 @@ export const APP_CONFIG: AppConfig = {
   presetAmounts: PRESET_AMOUNTS,
   defaultLeverage: DEFAULT_LEVERAGE,
   refreshIntervalMs: 300000, // 5 minutes
-  orderbookDepthLimit: 500,
+  // 1000 is the REST ceiling on Binance/Bybit/MEXC and roughly doubles the
+  // price range the book spans; venues that cap lower just return less.
+  orderbookDepthLimit: 1000,
   rateLimitPerMinute: 60,
 };
 
