@@ -10,3 +10,6 @@ dist/
 .ai/logs/
 .ai/archive/
 .env
+
+# TypeScript incremental build cache
+*.tsbuildinfo

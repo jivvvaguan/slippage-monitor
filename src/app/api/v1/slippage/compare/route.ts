@@ -32,19 +32,22 @@ export const GET = withRateLimit(async (request: NextRequest) => {
   const results: FormattedResult[] = [];
 
   for (const adapter of adapters) {
+    // Depth was computed once when the collector wrote this book.
+    const ob = cache.getOrderbook(adapter.name, pair);
+    const depth = cache.getDepthBand(adapter.name, pair);
+
     if (isPreset && leverage === APP_CONFIG.defaultLeverage && side === 'buy') {
       const precomputed = cache.getPrecomputedSlippage(adapter.name, pair);
       const match = precomputed.find(r => r.notionalUSD === amount);
       if (match) {
-        results.push(formatSlippageResult(match, amount));
+        results.push(formatSlippageResult(match, amount, depth));
         continue;
       }
     }
 
-    const ob = cache.getOrderbook(adapter.name, pair);
     if (ob) {
       const result = calculateSlippage(ob, amount, leverage, adapter.getTakerFeeBps(), side);
-      results.push(formatSlippageResult(result, amount));
+      results.push(formatSlippageResult(result, amount, depth));
     }
   }
 

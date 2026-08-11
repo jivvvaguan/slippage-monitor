@@ -62,8 +62,17 @@ export class CcxtAdapter implements ExchangeAdapter {
 
     try {
       const ob = await this.exchange.fetchOrderBook(symbol, limit);
-      const bids = normalizeOrderbook(ob.bids as [number, number][]);
-      const asks = normalizeOrderbook(ob.asks as [number, number][]);
+      // Some venues quote book size in contracts rather than base currency
+      // (MEXC contractSize 0.0001, OKX 0.01). Scale to base here so every
+      // downstream consumer — slippage, depth — works in one unit.
+      // markets[...] rather than market(): the latter throws on an unknown
+      // symbol, and inside this try that would drop the venue entirely
+      // instead of merely skipping the scaling.
+      const contractSize = Number(this.exchange.markets[symbol]?.contractSize) || 1;
+      const toBase = (levels: [number, number][]): [number, number][] =>
+        contractSize === 1 ? levels : levels.map(([p, a]) => [p, a * contractSize]);
+      const bids = normalizeOrderbook(toBase(ob.bids as [number, number][]));
+      const asks = normalizeOrderbook(toBase(ob.asks as [number, number][]));
       return {
         exchange: this.name,
         symbol,
