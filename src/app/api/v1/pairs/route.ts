@@ -25,7 +25,7 @@ export const GET = withRateLimit(async (request: NextRequest) => {
     const venues = adapters.filter(a => a.getSymbol(pair.id) !== null).length;
     return {
       id: pair.id,
-      name: `${pair.id}-PERP`,
+      name: market === 'perp' ? `${pair.id}-PERP` : `${pair.id}/USDC`,
       display_name: pair.id,
       tier: pair.tier,
       multiplier: pair.multiplier,

@@ -94,11 +94,18 @@ export async function ensurePairFresh(market: MarketType, pairId: string): Promi
   const pair = pairRegistry.get(market, pairId);
   if (!pair) return;
 
+  // Freshness must come from THIS pair's book. getDataAge reports the venue's
+  // last write of any pair, and the tier-1 cron touches every venue every 5
+  // minutes, so a 19-minute-old tier-2 pair would always look fresh and the
+  // on-demand refresh would never fire.
   const adapters = getAdapters(market);
-  const ages = adapters.map(a => cache.getDataAge(market, a.name));
-  const freshest = Math.min(...ages.map(a => (Number.isFinite(a) ? a : Infinity)));
-  const hasData = adapters.some(a => cache.getOrderbook(market, a.name, pair.id) !== null);
-  if (hasData && freshest * 1000 < ON_DEMAND_STALE_MS) return;
+  const books = adapters
+    .map(a => cache.getOrderbook(market, a.name, pair.id))
+    .filter((ob): ob is NonNullable<typeof ob> => ob !== null);
+  if (books.length > 0) {
+    const newest = Math.max(...books.map(ob => ob.timestamp));
+    if (Date.now() - newest < ON_DEMAND_STALE_MS) return;
+  }
 
   // Collapse concurrent requests for the same pair into one fetch.
   const key = `${market}:${pair.id}`;

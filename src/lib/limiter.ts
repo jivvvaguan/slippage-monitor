@@ -14,15 +14,21 @@ export class ConcurrencyLimiter {
   constructor(private readonly max: number) {}
 
   async run<T>(task: () => Promise<T>): Promise<T> {
+    // The slot is taken here, not after the await resumes: a waking task only
+    // increments on a later microtask, so a fresh caller arriving in between
+    // would see a free slot and push concurrency past max — the exact
+    // over-subscription this class exists to prevent.
     if (this.active >= this.max) {
       await new Promise<void>(resolve => this.queue.push(resolve));
+    } else {
+      this.active++;
     }
-    this.active++;
     try {
       return await task();
     } finally {
-      this.active--;
-      this.queue.shift()?.();
+      const next = this.queue.shift();
+      if (next) next(); // hands the slot straight over, active unchanged
+      else this.active--;
     }
   }
 }

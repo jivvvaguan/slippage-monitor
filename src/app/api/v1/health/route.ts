@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { cache } from '@/lib/cache';
 import { getAdapters } from '@/lib/collector';
+import { MARKET_TYPES } from '@/lib/pairs';
 
 /**
  * Health check endpoint optimized for monitoring scripts.
@@ -8,18 +9,22 @@ import { getAdapters } from '@/lib/collector';
  * No rate limiting — monitoring agents need unrestricted access.
  */
 export async function GET() {
-  const adapters = getAdapters();
-
+  // Both markets are reported: a spot collector that dies — the spot endpoint
+  // is undocumented and could change shape — would otherwise be invisible here
+  // while /health kept answering 200.
   // getDataAge returns Infinity for an exchange with no cached data, which
   // JSON.stringify would emit as null — map it to null explicitly instead.
-  const exchanges = adapters.map((adapter) => {
-    const age = cache.getDataAge('perp', adapter.name);
-    return {
-      name: adapter.name,
-      status: cache.getExchangeStatus('perp', adapter.name),
-      data_age_seconds: Number.isFinite(age) ? age : null,
-    };
-  });
+  const exchanges = MARKET_TYPES.flatMap((market) =>
+    getAdapters(market).map((adapter) => {
+      const age = cache.getDataAge(market, adapter.name);
+      return {
+        market,
+        name: adapter.name,
+        status: cache.getExchangeStatus(market, adapter.name),
+        data_age_seconds: Number.isFinite(age) ? age : null,
+      };
+    }),
+  );
 
   const allOnline = exchanges.every((ex) => ex.status === 'online');
   const anyOffline = exchanges.some((ex) => ex.status === 'offline');

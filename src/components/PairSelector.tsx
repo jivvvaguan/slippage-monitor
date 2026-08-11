@@ -7,6 +7,7 @@ import { t } from '@/i18n';
 
 interface PairOption {
   id: string;
+  name: string;
   tier: number;
   comparable_exchanges: number;
 }
@@ -86,7 +87,7 @@ export default function PairSelector({ selectedPair, onPairChange, market, onPai
                       pair.id === selectedPair ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600' : ''
                     }`}
                   >
-                    <span>{pair.id}-PERP</span>
+                    <span>{pair.name}</span>
                     <span className="text-[10px] text-gray-400 shrink-0">
                       {pair.comparable_exchanges > 1
                         ? t(locale, 'venueCount', { n: String(pair.comparable_exchanges) })

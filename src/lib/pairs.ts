@@ -145,12 +145,18 @@ async function fetchSpotPairs(): Promise<PairInfo[]> {
 
 /**
  * "vBTC_vUSDC" -> "BTC". SoDEX prefixes bridged assets with v, and its own
- * token appears as the wrapped "WSOSO_vUSDC".
+ * token appears wrapped as "WSOSO_vUSDC".
+ *
+ * The W is stripped only for known wrapped listings: an unconditional rule
+ * turns WLD into "LD" and WIF into "IF", which then match nothing on the CEX
+ * side and would surface as SoDEX-only pairs under a mangled name.
  */
+const WRAPPED_SPOT_SYMBOLS = new Set(['WSOSO']);
+
 export function spotBaseOf(symbol: string): string {
   const left = symbol.split('_')[0];
   if (left.startsWith('v')) return left.slice(1).toUpperCase();
-  if (left.startsWith('W')) return left.slice(1).toUpperCase();
+  if (WRAPPED_SPOT_SYMBOLS.has(left.toUpperCase())) return left.slice(1).toUpperCase();
   return left.toUpperCase();
 }
 
@@ -176,7 +182,12 @@ export function splitMultiplier(symbolOrBase: string): { base: string; multiplie
   const upper = symbolOrBase.toUpperCase();
   const numeric = /^(1000000|100000|10000|1000)(.+)$/.exec(upper);
   if (numeric) return { base: numeric[2], multiplier: Number(numeric[1]) };
-  if (/^K[A-Z]{2,}$/.test(upper)) return { base: upper.slice(1), multiplier: 1000 };
+  // Hyperliquid's thousand-unit prefix is a LOWERCASE k (kPEPE). Matching on
+  // the upper-cased form would eat real tickers — KAVA, KAITO, KSM, KNC would
+  // all become 1000x listings of "AVA", "AITO", "SM", "NC".
+  if (/^k[A-Z0-9]{2,}$/.test(symbolOrBase)) {
+    return { base: upper.slice(1), multiplier: 1000 };
+  }
   return { base: upper, multiplier: 1 };
 }
 

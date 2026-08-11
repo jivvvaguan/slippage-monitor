@@ -122,7 +122,11 @@ export class BinanceBookManager {
     try {
       const res = await fetch(`${REST_URL}?symbol=${stream.toUpperCase()}&limit=${SNAPSHOT_LIMIT}`);
       const snap = (await res.json()) as { lastUpdateId: number; bids: [string, string][]; asks: [string, string][] };
-      if (!snap.lastUpdateId) return;
+      if (!snap.lastUpdateId) {
+        // An error body parks the book unsynced forever unless we retry.
+        setTimeout(() => void this.resync(stream), RECONNECT_BASE_MS);
+        return;
+      }
 
       book.bids.clear();
       book.asks.clear();
@@ -135,9 +139,16 @@ export class BinanceBookManager {
       // kept event to straddle it.
       const pending = book.buffer.filter(e => e.u >= snap.lastUpdateId);
       book.buffer = [];
-      for (const event of pending) {
-        if (event.U > snap.lastUpdateId + 1) {
-          void this.resync(stream); // gap — snapshot was already stale
+      for (const [i, event] of pending.entries()) {
+        // Only the FIRST kept event has to straddle the snapshot. Later ones
+        // are chained off their predecessor via pu — checking them against the
+        // snapshot id instead makes event #2 always look like a gap, which
+        // resyncs, buffers two more, and loops on weight-20 depth calls.
+        const gap = i === 0
+          ? event.U > snap.lastUpdateId + 1
+          : event.pu !== book.lastUpdateId;
+        if (gap) {
+          void this.resync(stream);
           return;
         }
         applyLevels(book.bids, event.b);

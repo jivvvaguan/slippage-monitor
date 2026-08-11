@@ -59,8 +59,10 @@ export class EdgeXAdapter implements ExchangeAdapter {
       const unversioned = /^(.*[A-Z])\d+$/.exec(coinName)?.[1] ?? coinName;
       const { base, multiplier } = splitMultiplier(unversioned);
       const existing = this.resolved.get(base);
-      // Prefer the listing whose coin name carries no version suffix.
-      if (existing && existing.name === base) continue;
+      // Prefer the listing whose coin name carries no version suffix. Compare
+      // against the unversioned name, not the multiplier-stripped base — for
+      // 1000PEPE those differ, so a versioned contract would always win.
+      if (existing && existing.name === coinName) continue;
       this.resolved.set(base, { contractId: c.contractId, name: unversioned, multiplier });
     }
     this.loaded = true;

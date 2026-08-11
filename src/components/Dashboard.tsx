@@ -49,6 +49,11 @@ export default function Dashboard() {
       if (res.ok) {
         const json = await res.json();
         setData(json);
+      } else {
+        // A 400 here means the pair does not exist in this market yet — the
+        // selector is about to correct it. Keeping the old response would
+        // render one market's prices under the other market's tab.
+        setData(null);
       }
     } catch (err) {
       console.error('Fetch error:', err);
@@ -67,6 +72,11 @@ export default function Dashboard() {
     if (market === 'perp' && leverage !== 10) params.set('leverage', String(leverage));
     router.replace(`?${params.toString()}`, { scroll: false });
   }, [market, pair, amount, leverage, router]);
+
+  // Drop the previous market's rows the moment the tab changes.
+  useEffect(() => {
+    setData(null);
+  }, [market]);
 
   // Fetch on mount and when params change
   useEffect(() => {

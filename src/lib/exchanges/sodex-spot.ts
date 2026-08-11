@@ -1,6 +1,7 @@
 import type { ExchangeAdapter, Orderbook, OrderbookEntry } from './types';
 import { computeMidPrice } from './base';
-import { spotBaseOf } from '../pairs';
+import { rescaleOrderbook } from './normalize';
+import { spotBaseOf, splitMultiplier } from '../pairs';
 
 const BASE_URL = 'https://mainnet-gw.sodex.dev/api/v1/spot';
 
@@ -77,14 +78,21 @@ export class SodexSpotAdapter implements ExchangeAdapter {
         .sort((a, b) => a.price - b.price);
       if (bids.length === 0 || asks.length === 0) return null;
 
-      return {
-        exchange: this.name,
-        symbol,
-        bids,
-        asks,
-        timestamp: json.data.blockTime ?? Date.now(),
-        midPrice: computeMidPrice(bids, asks),
-      };
+      // Report per-unit prices like every other adapter; the collector
+      // reapplies the pair's quoting unit. Without this a multiplier-prefixed
+      // spot listing would sit 1000x off the other venues in the same column.
+      const { multiplier } = splitMultiplier(pair);
+      return rescaleOrderbook(
+        {
+          exchange: this.name,
+          symbol,
+          bids,
+          asks,
+          timestamp: json.data.blockTime ?? Date.now(),
+          midPrice: computeMidPrice(bids, asks),
+        },
+        1 / multiplier,
+      );
     } catch (err) {
       console.error(`[SoDEX spot] Error fetching ${pair}: ${(err as Error).message}`);
       return null;

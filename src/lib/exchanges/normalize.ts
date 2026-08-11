@@ -26,3 +26,28 @@ export function rescaleOrderbook(book: Orderbook, factor: number): Orderbook {
     midPrice: book.midPrice * factor,
   };
 }
+
+/**
+ * Restate a book priced in some quote currency into USD.
+ *
+ * Unlike rescaleOrderbook this leaves amounts alone: sizes are already in the
+ * base asset, so only the price needs converting and the notional follows.
+ * Without it a JPY- or IDR-quoted book reports depth in yen or rupiah under a
+ * dollar sign — Binance spot's most-traded BTC pair is BTC/IDR, whose raw
+ * quote volume looks 4x larger than BTC/USDT until you divide by 16,000.
+ */
+export function convertQuoteToUsd(book: Orderbook, quoteUsd: number): Orderbook {
+  if (quoteUsd === 1) return book;
+
+  const scale = (level: OrderbookEntry): OrderbookEntry => ({
+    price: level.price * quoteUsd,
+    amount: level.amount,
+  });
+
+  return {
+    ...book,
+    bids: book.bids.map(scale),
+    asks: book.asks.map(scale),
+    midPrice: book.midPrice * quoteUsd,
+  };
+}
