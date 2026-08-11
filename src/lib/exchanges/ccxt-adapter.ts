@@ -2,29 +2,38 @@ import ccxt from 'ccxt';
 import type { ExchangeAdapter, Orderbook } from './types';
 import { normalizeOrderbook, computeMidPrice } from './base';
 import { rescaleOrderbook } from './normalize';
-import { splitMultiplier } from '../pairs';
+import { splitMultiplier, type MarketType } from '../pairs';
 
 export interface CcxtAdapterConfig {
   exchangeId: string;
   name: string;
+  /** Perp fee, in bps. Ignored for spot, which reads the venue's own taker. */
   takerFeeBps: number;
+  market?: MarketType;
   ccxtOptions?: Record<string, any>;
 }
 
-/** Settlement currencies to try, most liquid first. */
-const QUOTE_PREFERENCE = ['USDT', 'USDC', 'USD'];
+/**
+ * Settlement preference. Perps settle overwhelmingly in USDT; SoDEX spot is
+ * quoted in USDC throughout, so matching USDC first there keeps a USDT/USDC
+ * basis out of the comparison.
+ */
+const PERP_QUOTE_PREFERENCE = ['USDT', 'USDC', 'USD'];
+const SPOT_QUOTE_PREFERENCE = ['USDC', 'USDT', 'USD'];
 
 export class CcxtAdapter implements ExchangeAdapter {
   name: string;
   private exchange: any;
   private marketsLoaded = false;
   /** canonical base -> { symbol, multiplier } */
-  private resolved = new Map<string, { symbol: string; multiplier: number }>();
+  private resolved = new Map<string, { symbol: string; multiplier: number; takerBps: number }>();
   private takerFeeBps: number;
+  private market: MarketType;
 
   constructor(config: CcxtAdapterConfig) {
     this.name = config.name;
     this.takerFeeBps = config.takerFeeBps;
+    this.market = config.market ?? 'perp';
 
     const ExchangeClass = (ccxt as any)[config.exchangeId];
     this.exchange = new ExchangeClass({
@@ -42,21 +51,28 @@ export class CcxtAdapter implements ExchangeAdapter {
     if (this.marketsLoaded) return;
     await this.exchange.loadMarkets();
 
-    for (const market of Object.values(this.exchange.markets) as any[]) {
-      if (!market.swap || !market.active) continue;
-      const quoteRank = QUOTE_PREFERENCE.indexOf(market.settle ?? market.quote);
+    const isSpot = this.market === 'spot';
+    const preference = isSpot ? SPOT_QUOTE_PREFERENCE : PERP_QUOTE_PREFERENCE;
+    const ranks = new Map<string, number>();
+
+    for (const m of Object.values(this.exchange.markets) as any[]) {
+      if (!m.active) continue;
+      if (isSpot ? !m.spot : !m.swap) continue;
+      const quoteRank = preference.indexOf(isSpot ? m.quote : (m.settle ?? m.quote));
       if (quoteRank === -1) continue;
 
-      const { base, multiplier } = splitMultiplier(market.base);
-      const existing = this.resolved.get(base);
-      if (existing) {
-        const existingRank = QUOTE_PREFERENCE.indexOf(
-          (this.exchange.markets[existing.symbol]?.settle ??
-            this.exchange.markets[existing.symbol]?.quote) as string,
-        );
-        if (existingRank !== -1 && existingRank <= quoteRank) continue;
-      }
-      this.resolved.set(base, { symbol: market.symbol, multiplier });
+      const { base, multiplier } = splitMultiplier(m.base);
+      const existingRank = ranks.get(base);
+      if (existingRank !== undefined && existingRank <= quoteRank) continue;
+
+      // Spot taker fees vary widely by venue (OKX 15 bps, MEXC 0), so read the
+      // venue's own rate rather than carrying one number for the whole
+      // exchange the way perps do.
+      const takerBps = isSpot && typeof m.taker === 'number'
+        ? m.taker * 10000
+        : this.takerFeeBps;
+      this.resolved.set(base, { symbol: m.symbol, multiplier, takerBps });
+      ranks.set(base, quoteRank);
     }
 
     this.marketsLoaded = true;
@@ -71,7 +87,11 @@ export class CcxtAdapter implements ExchangeAdapter {
     return [...this.resolved.keys()];
   }
 
-  getTakerFeeBps(): number {
+  getTakerFeeBps(pair?: string): number {
+    if (pair) {
+      const entry = this.resolved.get(splitMultiplier(pair).base);
+      if (entry) return entry.takerBps;
+    }
     return this.takerFeeBps;
   }
 

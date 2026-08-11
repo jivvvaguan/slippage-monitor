@@ -6,7 +6,9 @@ import { HyperliquidAdapter } from './exchanges/hyperliquid';
 import { SodexAdapter } from './exchanges/sodex';
 import { AsterAdapter } from './exchanges/aster';
 import { EdgeXAdapter } from './exchanges/edgex';
+import { SodexSpotAdapter } from './exchanges/sodex-spot';
 import type { ExchangeAdapter } from './exchanges/types';
+import type { MarketType } from './pairs';
 import { PRESET_AMOUNTS, DEFAULT_LEVERAGE } from './constants';
 
 export interface AppConfig {
@@ -27,7 +29,24 @@ export const APP_CONFIG: AppConfig = {
   rateLimitPerMinute: 60,
 };
 
-export function createExchangeAdapters(): ExchangeAdapter[] {
+/**
+ * Aster, EdgeX and Hyperliquid are perp-only venues here — Aster and EdgeX have
+ * no spot at all, and Hyperliquid's spot universe is HIP-1 tokens with almost
+ * no overlap with SoDEX's listings. Including them in a spot sweep would just
+ * burn requests returning nothing.
+ */
+export function createExchangeAdapters(market: MarketType = 'perp'): ExchangeAdapter[] {
+  if (market === 'spot') {
+    return [
+      new SodexSpotAdapter(),
+      new CcxtAdapter({ exchangeId: 'binance', name: 'Binance', takerFeeBps: 10, market: 'spot' }),
+      new CcxtAdapter({ exchangeId: 'bybit', name: 'Bybit', takerFeeBps: 10, market: 'spot' }),
+      new CcxtAdapter({ exchangeId: 'okx', name: 'OKX', takerFeeBps: 10, market: 'spot' }),
+      new CcxtAdapter({ exchangeId: 'bitget', name: 'Bitget', takerFeeBps: 10, market: 'spot' }),
+      new CcxtAdapter({ exchangeId: 'mexc', name: 'MEXC', takerFeeBps: 10, market: 'spot' }),
+    ];
+  }
+
   return [
     new BinanceAdapter(),
     new CcxtAdapter({

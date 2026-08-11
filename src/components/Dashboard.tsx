@@ -5,6 +5,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import type { Locale } from '@/i18n';
 import { t } from '@/i18n';
 import ThemeLangToggle from '@/components/ThemeLangToggle';
+import MarketTabs, { type MarketType } from '@/components/MarketTabs';
 import PairSelector from '@/components/PairSelector';
 import AmountSelector from '@/components/AmountSelector';
 import LeverageSelector from '@/components/LeverageSelector';
@@ -12,6 +13,7 @@ import SlippageGrid from '@/components/SlippageGrid';
 import FreshnessBadge from '@/components/FreshnessBadge';
 
 interface CompareResponse {
+  market: MarketType;
   pair: string;
   amount: number;
   leverage: number;
@@ -29,6 +31,9 @@ export default function Dashboard() {
   const router = useRouter();
 
   const [locale, setLocale] = useState<Locale>('zh');
+  const [market, setMarket] = useState<MarketType>(
+    searchParams.get('market') === 'spot' ? 'spot' : 'perp',
+  );
   const [pair, setPair] = useState(searchParams.get('pair')?.toUpperCase() || 'BTC');
   const [amount, setAmount] = useState(Number(searchParams.get('amount')) || 100000);
   const [leverage, setLeverage] = useState(Number(searchParams.get('leverage')) || 10);
@@ -37,7 +42,10 @@ export default function Dashboard() {
 
   const fetchData = useCallback(async () => {
     try {
-      const res = await fetch(`/api/v1/slippage/compare?pair=${pair}&amount=${amount}&leverage=${leverage}`);
+      const effectiveLeverage = market === 'spot' ? 1 : leverage;
+      const res = await fetch(
+        `/api/v1/slippage/compare?market=${market}&pair=${pair}&amount=${amount}&leverage=${effectiveLeverage}`,
+      );
       if (res.ok) {
         const json = await res.json();
         setData(json);
@@ -47,16 +55,18 @@ export default function Dashboard() {
     } finally {
       setLoading(false);
     }
-  }, [pair, amount, leverage]);
+  }, [market, pair, amount, leverage]);
 
   // Update URL params
   useEffect(() => {
     const params = new URLSearchParams();
+    // Market goes in the URL so a shared link opens on the tab it was made on.
+    if (market !== 'perp') params.set('market', market);
     params.set('pair', pair);
     params.set('amount', String(amount));
-    if (leverage !== 10) params.set('leverage', String(leverage));
+    if (market === 'perp' && leverage !== 10) params.set('leverage', String(leverage));
     router.replace(`?${params.toString()}`, { scroll: false });
-  }, [pair, amount, leverage, router]);
+  }, [market, pair, amount, leverage, router]);
 
   // Fetch on mount and when params change
   useEffect(() => {
@@ -88,7 +98,7 @@ export default function Dashboard() {
         <div>
           <h1 className="text-2xl font-bold">{t(locale, 'title')}</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            {t(locale, 'subtitle')}
+            {t(locale, market === 'perp' ? 'subtitle' : 'subtitleSpot')}
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -97,22 +107,37 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {/* Market tabs */}
+      <div className="mb-4">
+        <MarketTabs market={market} onMarketChange={setMarket} locale={locale} />
+      </div>
+
       {/* Pair selector */}
       <div className="mb-4">
-        <PairSelector selectedPair={pair} onPairChange={setPair} locale={locale} />
+        <PairSelector
+          selectedPair={pair}
+          onPairChange={setPair}
+          market={market}
+          onPairMissing={setPair}
+          locale={locale}
+        />
       </div>
 
       {/* Pair info line */}
       {data && data.results.length > 0 && (
         <div className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-          {pair}-PERP · ${data.results[0]?.mid_price?.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+          {pair}{market === 'perp' ? '-PERP' : '/USDC'} · ${data.results[0]?.mid_price?.toLocaleString(undefined, { maximumFractionDigits: 2 })}
         </div>
       )}
 
       {/* Amount + Leverage row */}
       <div className="flex flex-wrap items-center gap-4 mb-6">
         <AmountSelector selectedAmount={amount} onAmountChange={setAmount} locale={locale} />
-        <LeverageSelector leverage={leverage} onLeverageChange={setLeverage} locale={locale} />
+        {/* Spot has no leverage: principal equals notional, so the selector
+            would only produce a misleading "% of principal". */}
+        {market === 'perp' && (
+          <LeverageSelector leverage={leverage} onLeverageChange={setLeverage} locale={locale} />
+        )}
       </div>
 
       {/* Results grid */}

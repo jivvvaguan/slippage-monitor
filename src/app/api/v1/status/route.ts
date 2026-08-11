@@ -10,11 +10,11 @@ export const GET = withRateLimit(async (request: NextRequest) => {
   const exchanges: Record<string, any> = {};
 
   for (const adapter of adapters) {
-    const lastUpdate = cache.getLastUpdate(adapter.name);
+    const lastUpdate = cache.getLastUpdate('perp', adapter.name);
     exchanges[adapter.name.toLowerCase()] = {
-      status: cache.getExchangeStatus(adapter.name),
+      status: cache.getExchangeStatus('perp', adapter.name),
       last_success: lastUpdate ? new Date(lastUpdate).toISOString() : null,
-      data_age_seconds: cache.getDataAge(adapter.name),
+      data_age_seconds: cache.getDataAge('perp', adapter.name),
     };
   }
 

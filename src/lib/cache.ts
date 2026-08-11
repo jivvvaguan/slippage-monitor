@@ -2,6 +2,7 @@ import type { Orderbook, SlippageResult } from './exchanges/types';
 import { calculateSlippage } from './slippage';
 import { computeDepthBands, type DepthBand } from './depth';
 import { APP_CONFIG } from './config';
+import type { MarketType } from './pairs';
 
 interface ExchangeCache {
   orderbooks: Map<string, Orderbook>;
@@ -13,7 +14,16 @@ interface ExchangeCache {
 const globalForCache = globalThis as unknown as { __slippageCache?: SlippageCache };
 
 class SlippageCache {
+  /**
+   * Keyed by market and venue. Spot and perps list the same tickers (BTC on
+   * both), so without the market in the key one would silently overwrite the
+   * other and both tabs would show the same numbers.
+   */
   private cache = new Map<string, ExchangeCache>();
+
+  private key(market: MarketType, exchange: string): string {
+    return `${market}:${exchange}`;
+  }
 
   static getInstance(): SlippageCache {
     if (!globalForCache.__slippageCache) {
@@ -23,6 +33,7 @@ class SlippageCache {
   }
 
   updateOrderbook(
+    market: MarketType,
     exchange: string,
     pair: string,
     orderbook: Orderbook,
@@ -30,15 +41,16 @@ class SlippageCache {
     depthBook?: Orderbook | null,
   ): void {
     const now = Date.now();
-    if (!this.cache.has(exchange)) {
-      this.cache.set(exchange, {
+    const key = this.key(market, exchange);
+    if (!this.cache.has(key)) {
+      this.cache.set(key, {
         orderbooks: new Map(),
         slippageResults: new Map(),
         depthBands: new Map(),
         lastUpdate: now,
       });
     }
-    const ec = this.cache.get(exchange)!;
+    const ec = this.cache.get(key)!;
     ec.orderbooks.set(pair, orderbook);
     ec.lastUpdate = now;
 
@@ -57,34 +69,34 @@ class SlippageCache {
     ec.slippageResults.set(pair, results);
   }
 
-  getOrderbook(exchange: string, pair: string): Orderbook | null {
-    return this.cache.get(exchange)?.orderbooks.get(pair) ?? null;
+  getOrderbook(market: MarketType, exchange: string, pair: string): Orderbook | null {
+    return this.cache.get(this.key(market, exchange))?.orderbooks.get(pair) ?? null;
   }
 
-  getPrecomputedSlippage(exchange: string, pair: string): SlippageResult[] {
-    return this.cache.get(exchange)?.slippageResults.get(pair) ?? [];
+  getPrecomputedSlippage(market: MarketType, exchange: string, pair: string): SlippageResult[] {
+    return this.cache.get(this.key(market, exchange))?.slippageResults.get(pair) ?? [];
   }
 
-  getDepthBands(exchange: string, pair: string): (DepthBand | null)[] {
-    return this.cache.get(exchange)?.depthBands.get(pair) ?? [];
+  getDepthBands(market: MarketType, exchange: string, pair: string): (DepthBand | null)[] {
+    return this.cache.get(this.key(market, exchange))?.depthBands.get(pair) ?? [];
   }
 
-  getDataAge(exchange: string): number {
-    const ec = this.cache.get(exchange);
+  getDataAge(market: MarketType, exchange: string): number {
+    const ec = this.cache.get(this.key(market, exchange));
     if (!ec) return Infinity;
     return Math.floor((Date.now() - ec.lastUpdate) / 1000);
   }
 
-  getLastUpdate(exchange: string): number {
-    return this.cache.get(exchange)?.lastUpdate ?? 0;
+  getLastUpdate(market: MarketType, exchange: string): number {
+    return this.cache.get(this.key(market, exchange))?.lastUpdate ?? 0;
   }
 
   getAllExchanges(): string[] {
-    return Array.from(this.cache.keys());
+    return Array.from(this.cache.keys()).map(k => k.split(':')[1]);
   }
 
-  getExchangeStatus(exchange: string): 'online' | 'degraded' | 'offline' {
-    const age = this.getDataAge(exchange);
+  getExchangeStatus(market: MarketType, exchange: string): 'online' | 'degraded' | 'offline' {
+    const age = this.getDataAge(market, exchange);
     if (age === Infinity) return 'offline';
     if (age > 600) return 'degraded'; // >10 minutes
     return 'online';

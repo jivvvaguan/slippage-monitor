@@ -1,5 +1,18 @@
-const SYMBOLS_URL =
+const PERP_SYMBOLS_URL =
   'https://mainnet-gw.sodex.dev/futures/fapi/market/v1/public/m/symbols';
+/**
+ * Spot lives on a separate service. Neither the public docs nor path guessing
+ * found it; this was read off the trading UI's own network calls.
+ */
+const SPOT_TICKERS_URL = 'https://mainnet-gw.sodex.dev/api/v1/spot/markets/tickers';
+
+/** SoDEX runs spot and perpetuals as two independent markets. */
+export type MarketType = 'perp' | 'spot';
+export const MARKET_TYPES: MarketType[] = ['perp', 'spot'];
+
+export function isMarketType(value: string | null): value is MarketType {
+  return value === 'perp' || value === 'spot';
+}
 
 /** How long a fetched universe is served before another refresh is attempted. */
 const REFRESH_INTERVAL_MS = 60 * 60 * 1000;
@@ -21,7 +34,8 @@ const ALIASES: Record<string, string> = {
 export interface PairInfo {
   /** Canonical id used across the app and the API, e.g. BTC, NVDA, 1000PEPE. */
   id: string;
-  /** SoDEX contract symbol, e.g. BTC-USD. */
+  market: MarketType;
+  /** SoDEX symbol: BTC-USD for perps, vBTC_vUSDC for spot. */
   sodexSymbol: string;
   /**
    * Units of the underlying per quoted unit. SoDEX quotes 1000PEPE in
@@ -44,9 +58,9 @@ interface SodexSymbol {
 const globalForPairs = globalThis as unknown as { __pairRegistry?: PairRegistry };
 
 class PairRegistry {
-  private pairs: PairInfo[] = [];
-  private lastFetch = 0;
-  private inFlight: Promise<void> | null = null;
+  private pairs: Record<MarketType, PairInfo[]> = { perp: [], spot: [] };
+  private lastFetch: Record<MarketType, number> = { perp: 0, spot: 0 };
+  private inFlight: Partial<Record<MarketType, Promise<void>>> = {};
 
   static getInstance(): PairRegistry {
     if (!globalForPairs.__pairRegistry) {
@@ -56,66 +70,97 @@ class PairRegistry {
   }
 
   /** Everything known right now. Empty only before the first successful fetch. */
-  all(): PairInfo[] {
-    return this.pairs;
+  all(market: MarketType): PairInfo[] {
+    return this.pairs[market];
   }
 
-  tier(n: 1 | 2): PairInfo[] {
-    return this.pairs.filter(p => p.tier === n);
+  tier(market: MarketType, n: 1 | 2): PairInfo[] {
+    return this.pairs[market].filter(p => p.tier === n);
   }
 
-  get(id: string): PairInfo | null {
+  get(market: MarketType, id: string): PairInfo | null {
     const canonical = ALIASES[id.toUpperCase()] ?? id.toUpperCase();
-    return this.pairs.find(p => p.id === canonical) ?? null;
+    return this.pairs[market].find(p => p.id === canonical) ?? null;
   }
 
   /** Fetch if the universe is stale. Concurrent callers share one request. */
-  async ensureFresh(): Promise<void> {
-    if (Date.now() - this.lastFetch < REFRESH_INTERVAL_MS && this.pairs.length > 0) return;
-    if (this.inFlight) return this.inFlight;
+  async ensureFresh(market: MarketType): Promise<void> {
+    if (Date.now() - this.lastFetch[market] < REFRESH_INTERVAL_MS && this.pairs[market].length > 0) {
+      return;
+    }
+    const pending = this.inFlight[market];
+    if (pending) return pending;
 
-    this.inFlight = this.refresh().finally(() => {
-      this.inFlight = null;
+    const task = this.refresh(market).finally(() => {
+      delete this.inFlight[market];
     });
-    return this.inFlight;
+    this.inFlight[market] = task;
+    return task;
   }
 
-  private async refresh(): Promise<void> {
-    try {
-      const res = await fetch(SYMBOLS_URL);
-      const json = (await res.json()) as { code: number; data?: SodexSymbol[] };
-      if (json.code !== 0 || !Array.isArray(json.data)) {
-        throw new Error(`code ${json.code}`);
-      }
+  async ensureAllFresh(): Promise<void> {
+    await Promise.all(MARKET_TYPES.map(m => this.ensureFresh(m)));
+  }
 
-      const next = json.data
-        .filter(s => s.futureType === 'PERPETUAL' && s.state === 'online')
-        .map(toPairInfo);
+  private async refresh(market: MarketType): Promise<void> {
+    try {
+      const next = market === 'perp' ? await fetchPerpPairs() : await fetchSpotPairs();
 
       // A momentarily empty listing must not wipe a working universe.
       if (next.length === 0) {
-        console.error('[Pairs] Listing returned no online perpetuals — keeping previous set');
+        console.error(`[Pairs] ${market} listing came back empty — keeping previous set`);
         return;
       }
 
-      this.pairs = next;
-      this.lastFetch = Date.now();
+      this.pairs[market] = next;
+      this.lastFetch[market] = Date.now();
       console.log(
-        `[Pairs] ${next.length} perpetuals (${next.filter(p => p.tier === 1).length} tier-1)`,
+        `[Pairs] ${market}: ${next.length} markets (${next.filter(p => p.tier === 1).length} tier-1)`,
       );
     } catch (err) {
       // Serve the previous universe rather than collapsing to nothing.
-      console.error(`[Pairs] Refresh failed, serving ${this.pairs.length} cached: ${(err as Error).message}`);
+      console.error(
+        `[Pairs] ${market} refresh failed, serving ${this.pairs[market].length} cached: ${(err as Error).message}`,
+      );
     }
   }
 }
 
-function toPairInfo(s: SodexSymbol): PairInfo {
-  const id = s.baseAsset.toUpperCase();
+async function fetchPerpPairs(): Promise<PairInfo[]> {
+  const json = (await (await fetch(PERP_SYMBOLS_URL)).json()) as { code: number; data?: SodexSymbol[] };
+  if (json.code !== 0 || !Array.isArray(json.data)) throw new Error(`code ${json.code}`);
+  return json.data
+    .filter(s => s.futureType === 'PERPETUAL' && s.state === 'online')
+    .map(s => toPairInfo('perp', s.baseAsset, s.symbol));
+}
+
+async function fetchSpotPairs(): Promise<PairInfo[]> {
+  const json = (await (await fetch(SPOT_TICKERS_URL)).json()) as {
+    code: number;
+    data?: Array<{ symbol: string }>;
+  };
+  if (json.code !== 0 || !Array.isArray(json.data)) throw new Error(`code ${json.code}`);
+  return json.data.map(t => toPairInfo('spot', spotBaseOf(t.symbol), t.symbol));
+}
+
+/**
+ * "vBTC_vUSDC" -> "BTC". SoDEX prefixes bridged assets with v, and its own
+ * token appears as the wrapped "WSOSO_vUSDC".
+ */
+export function spotBaseOf(symbol: string): string {
+  const left = symbol.split('_')[0];
+  if (left.startsWith('v')) return left.slice(1).toUpperCase();
+  if (left.startsWith('W')) return left.slice(1).toUpperCase();
+  return left.toUpperCase();
+}
+
+function toPairInfo(market: MarketType, baseAsset: string, sodexSymbol: string): PairInfo {
+  const id = baseAsset.toUpperCase();
   const { multiplier } = splitMultiplier(id);
   return {
     id,
-    sodexSymbol: s.symbol,
+    market,
+    sodexSymbol,
     multiplier,
     tier: TIER1_BASES.includes(id) ? 1 : 2,
   };

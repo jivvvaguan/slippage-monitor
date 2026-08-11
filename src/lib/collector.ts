@@ -2,7 +2,7 @@ import cron from 'node-cron';
 import type { ExchangeAdapter } from './exchanges/types';
 import { cache } from './cache';
 import { APP_CONFIG, createExchangeAdapters } from './config';
-import { pairRegistry, type PairInfo } from './pairs';
+import { pairRegistry, MARKET_TYPES, type PairInfo, type MarketType } from './pairs';
 import { limiterFor } from './limiter';
 import { rescaleOrderbook } from './exchanges/normalize';
 import { BinanceAdapter } from './exchanges/binance';
@@ -19,7 +19,7 @@ const TIER2_DEPTH_LIMIT = 100;
 const ON_DEMAND_STALE_MS = 5 * 60 * 1000;
 
 const globalForCollector = globalThis as unknown as {
-  __collectorAdapters?: ExchangeAdapter[];
+  __collectorAdapters?: Partial<Record<MarketType, ExchangeAdapter[]>>;
   __collectorStarted?: boolean;
   __collectorInFlight?: Map<string, Promise<void>>;
 };
@@ -31,16 +31,16 @@ function inFlight(): Map<string, Promise<void>> {
   return globalForCollector.__collectorInFlight;
 }
 
-export function getAdapters(): ExchangeAdapter[] {
-  if (!globalForCollector.__collectorAdapters) {
-    globalForCollector.__collectorAdapters = createExchangeAdapters();
-  }
-  return globalForCollector.__collectorAdapters;
+export function getAdapters(market: MarketType = 'perp'): ExchangeAdapter[] {
+  if (!globalForCollector.__collectorAdapters) globalForCollector.__collectorAdapters = {};
+  const sets = globalForCollector.__collectorAdapters;
+  if (!sets[market]) sets[market] = createExchangeAdapters(market);
+  return sets[market]!;
 }
 
 /** Fetch one pair everywhere, gated per venue so no single venue is flooded. */
 async function collectPair(pair: PairInfo, depthLimit: number): Promise<void> {
-  const adapters = getAdapters();
+  const adapters = getAdapters(pair.market);
 
   await Promise.all(
     adapters.map(adapter =>
@@ -56,19 +56,19 @@ async function collectPair(pair: PairInfo, depthLimit: number): Promise<void> {
           // unit so a 1000PEPE row reads in thousands on every venue.
           const ob = rescaleOrderbook(raw, pair.multiplier);
           const depthBook = rawDepth ? rescaleOrderbook(rawDepth, pair.multiplier) : null;
-          cache.updateOrderbook(adapter.name, pair.id, ob, adapter.getTakerFeeBps(), depthBook);
+          cache.updateOrderbook(pair.market, adapter.name, pair.id, ob, adapter.getTakerFeeBps(pair.id), depthBook);
         } catch (err) {
           // One venue failing must not take down the pair, nor the sweep.
-          console.error(`[Collector] ${adapter.name}/${pair.id}: ${(err as Error).message}`);
+          console.error(`[Collector] ${pair.market}/${adapter.name}/${pair.id}: ${(err as Error).message}`);
         }
       }),
     ),
   );
 }
 
-async function collectTier(tier: 1 | 2): Promise<void> {
-  await pairRegistry.ensureFresh();
-  const pairs = pairRegistry.tier(tier);
+async function collectTier(market: MarketType, tier: 1 | 2): Promise<void> {
+  await pairRegistry.ensureFresh(market);
+  const pairs = pairRegistry.tier(market, tier);
   if (pairs.length === 0) return;
 
   const depthLimit = tier === 1 ? TIER1_DEPTH_LIMIT : TIER2_DEPTH_LIMIT;
@@ -81,7 +81,7 @@ async function collectTier(tier: 1 | 2): Promise<void> {
   }
 
   console.log(
-    `[Collector] tier-${tier}: ${pairs.length} pairs in ${((Date.now() - started) / 1000).toFixed(1)}s`,
+    `[Collector] ${market} tier-${tier}: ${pairs.length} pairs in ${((Date.now() - started) / 1000).toFixed(1)}s`,
   );
 }
 
@@ -90,22 +90,24 @@ async function collectTier(tier: 1 | 2): Promise<void> {
  * half of the strategy: a long-tail pair someone actually opens gets current
  * data without putting every pair on the fast cadence.
  */
-export async function ensurePairFresh(pairId: string): Promise<void> {
-  const pair = pairRegistry.get(pairId);
+export async function ensurePairFresh(market: MarketType, pairId: string): Promise<void> {
+  const pair = pairRegistry.get(market, pairId);
   if (!pair) return;
 
-  const ages = getAdapters().map(a => cache.getDataAge(a.name));
+  const adapters = getAdapters(market);
+  const ages = adapters.map(a => cache.getDataAge(market, a.name));
   const freshest = Math.min(...ages.map(a => (Number.isFinite(a) ? a : Infinity)));
-  const hasData = cache.getOrderbook(getAdapters()[0]?.name ?? '', pair.id) !== null;
+  const hasData = adapters.some(a => cache.getOrderbook(market, a.name, pair.id) !== null);
   if (hasData && freshest * 1000 < ON_DEMAND_STALE_MS) return;
 
   // Collapse concurrent requests for the same pair into one fetch.
-  const pending = inFlight().get(pair.id);
+  const key = `${market}:${pair.id}`;
+  const pending = inFlight().get(key);
   if (pending) return pending;
 
   const task = collectPair(pair, pair.tier === 1 ? TIER1_DEPTH_LIMIT : TIER2_DEPTH_LIMIT)
-    .finally(() => inFlight().delete(pair.id));
-  inFlight().set(pair.id, task);
+    .finally(() => inFlight().delete(key));
+  inFlight().set(key, task);
   return task;
 }
 
@@ -114,23 +116,29 @@ export function startCollector(): void {
   globalForCollector.__collectorStarted = true;
 
   void (async () => {
-    await pairRegistry.ensureFresh();
+    await pairRegistry.ensureAllFresh();
 
     // Live books only for tier-1 — see BinanceAdapter for why the long tail
     // must not open 83 simultaneous snapshots.
-    const binance = getAdapters().find(a => a instanceof BinanceAdapter) as BinanceAdapter | undefined;
-    await binance?.startLiveBooks(pairRegistry.tier(1).map(p => p.id));
+    const binance = getAdapters('perp').find(a => a instanceof BinanceAdapter) as BinanceAdapter | undefined;
+    await binance?.startLiveBooks(pairRegistry.tier('perp', 1).map(p => p.id));
 
-    await collectTier(1);
-    await collectTier(2);
+    for (const market of MARKET_TYPES) {
+      await collectTier(market, 1);
+      await collectTier(market, 2);
+    }
   })().catch(err => console.error('[Collector] Initial sweep error:', err));
 
   cron.schedule('*/5 * * * *', () => {
-    collectTier(1).catch(err => console.error('[Collector] tier-1 error:', err));
+    for (const market of MARKET_TYPES) {
+      collectTier(market, 1).catch(err => console.error(`[Collector] ${market} tier-1 error:`, err));
+    }
   });
   cron.schedule('*/20 * * * *', () => {
-    collectTier(2).catch(err => console.error('[Collector] tier-2 error:', err));
+    for (const market of MARKET_TYPES) {
+      collectTier(market, 2).catch(err => console.error(`[Collector] ${market} tier-2 error:`, err));
+    }
   });
 
-  console.log('[Collector] Started — tier-1 every 5 min, tier-2 every 20 min');
+  console.log('[Collector] Started — spot and perp, tier-1 every 5 min, tier-2 every 20 min');
 }

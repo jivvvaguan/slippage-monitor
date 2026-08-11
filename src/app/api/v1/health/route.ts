@@ -13,10 +13,10 @@ export async function GET() {
   // getDataAge returns Infinity for an exchange with no cached data, which
   // JSON.stringify would emit as null — map it to null explicitly instead.
   const exchanges = adapters.map((adapter) => {
-    const age = cache.getDataAge(adapter.name);
+    const age = cache.getDataAge('perp', adapter.name);
     return {
       name: adapter.name,
-      status: cache.getExchangeStatus(adapter.name),
+      status: cache.getExchangeStatus('perp', adapter.name),
       data_age_seconds: Number.isFinite(age) ? age : null,
     };
   });

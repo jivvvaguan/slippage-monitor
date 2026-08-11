@@ -14,10 +14,13 @@ interface PairOption {
 interface Props {
   selectedPair: string;
   onPairChange: (pair: string) => void;
+  market: 'perp' | 'spot';
+  /** Called when the current pair is absent from the newly loaded market. */
+  onPairMissing: (fallback: string) => void;
   locale: Locale;
 }
 
-export default function PairSelector({ selectedPair, onPairChange, locale }: Props) {
+export default function PairSelector({ selectedPair, onPairChange, market, onPairMissing, locale }: Props) {
   const [search, setSearch] = useState('');
   const [isOpen, setIsOpen] = useState(false);
   const [pairs, setPairs] = useState<PairOption[]>([]);
@@ -26,12 +29,24 @@ export default function PairSelector({ selectedPair, onPairChange, locale }: Pro
   // rather than a compiled-in constant.
   useEffect(() => {
     let cancelled = false;
-    fetch('/api/v1/pairs')
+    setPairs([]);
+    fetch(`/api/v1/pairs?market=${market}`)
       .then(r => (r.ok ? r.json() : null))
-      .then(json => { if (!cancelled && json?.pairs) setPairs(json.pairs); })
+      .then(json => {
+        if (cancelled || !json?.pairs?.length) return;
+        setPairs(json.pairs);
+        // Spot and perps list different assets, so a pair carried across the
+        // tab switch may not exist here.
+        if (!json.pairs.some((p: PairOption) => p.id === selectedPair)) {
+          onPairMissing(json.pairs[0].id);
+        }
+      })
       .catch(() => {});
     return () => { cancelled = true; };
-  }, []);
+    // selectedPair is deliberately excluded: this reloads on market change,
+    // not on every pair pick.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [market]);
 
   const filtered = useMemo(() => {
     if (!search) return pairs;

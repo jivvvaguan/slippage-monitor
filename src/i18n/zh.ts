@@ -1,6 +1,9 @@
 const zh = {
   title: 'Perps 滑点监控',
   subtitle: '永续合约跨交易所滑点成本对比',
+  subtitleSpot: '现货跨交易所滑点成本对比',
+  perps: '永续',
+  spot: '现货',
   pair: '交易对',
   searchPair: '搜索币对...',
   amount: '下单金额',

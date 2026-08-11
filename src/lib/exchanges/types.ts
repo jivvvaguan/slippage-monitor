@@ -44,7 +44,11 @@ export interface ExchangeAdapter {
    * adapters expose it here instead of degrading fetchOrderbook.
    */
   fetchDepthOrderbook?(pair: string, limit: number): Promise<Orderbook | null>;
-  getTakerFeeBps(): number;
+  /**
+   * Taker fee in bps. The pair is optional because perp venues charge one rate
+   * across the board, while spot fees are per-market (OKX 15 bps, MEXC 0).
+   */
+  getTakerFeeBps(pair?: string): number;
   getSymbol(pair: string): string | null;
   getSupportedPairs(): Promise<string[]>;
   close(): Promise<void>;

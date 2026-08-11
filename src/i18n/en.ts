@@ -1,6 +1,9 @@
 const en = {
   title: 'Perps Slippage Monitor',
   subtitle: 'Cross-exchange perpetual futures slippage comparison',
+  subtitleSpot: 'Cross-exchange spot slippage comparison',
+  perps: 'Perps',
+  spot: 'Spot',
   pair: 'Pair',
   searchPair: 'Search pair...',
   amount: 'Order Amount',
