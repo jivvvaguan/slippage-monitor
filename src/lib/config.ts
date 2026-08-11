@@ -1,4 +1,8 @@
 import { CcxtAdapter } from './exchanges/ccxt-adapter';
+import { BinanceAdapter } from './exchanges/binance';
+import { BitgetAdapter } from './exchanges/bitget';
+import { OkxAdapter } from './exchanges/okx';
+import { HyperliquidAdapter } from './exchanges/hyperliquid';
 import { SodexAdapter } from './exchanges/sodex';
 import { AsterAdapter } from './exchanges/aster';
 import { EdgeXAdapter } from './exchanges/edgex';
@@ -28,13 +32,7 @@ export const APP_CONFIG: AppConfig = {
 
 export function createExchangeAdapters(): ExchangeAdapter[] {
   return [
-    new CcxtAdapter({
-      exchangeId: 'binance',
-      name: 'Binance',
-      pairSymbols: { BTC: 'BTC/USDT:USDT', ETH: 'ETH/USDT:USDT', SOL: 'SOL/USDT:USDT', GOLD: 'PAXG/USDT:USDT' },
-      takerFeeBps: 5.0,
-      ccxtOptions: { options: { defaultType: 'swap' } },
-    }),
+    new BinanceAdapter(),
     new CcxtAdapter({
       exchangeId: 'bybit',
       name: 'Bybit',
@@ -42,21 +40,10 @@ export function createExchangeAdapters(): ExchangeAdapter[] {
       takerFeeBps: 5.5,
       ccxtOptions: { options: { defaultType: 'swap' } },
     }),
-    new CcxtAdapter({
-      exchangeId: 'hyperliquid',
-      name: 'Hyperliquid',
-      pairSymbols: { BTC: 'BTC/USDC:USDC', ETH: 'ETH/USDC:USDC', SOL: 'SOL/USDC:USDC', GOLD: 'PAXG/USDC:USDC' },
-      takerFeeBps: 4.5,
-    }),
+    new HyperliquidAdapter(),
     new SodexAdapter(),
     // Phase 2 CEX — CCXT quick onboard
-    new CcxtAdapter({
-      exchangeId: 'bitget',
-      name: 'Bitget',
-      pairSymbols: { BTC: 'BTC/USDT:USDT', ETH: 'ETH/USDT:USDT', SOL: 'SOL/USDT:USDT' },
-      takerFeeBps: 5.0,
-      ccxtOptions: { options: { defaultType: 'swap' } },
-    }),
+    new BitgetAdapter(),
     new CcxtAdapter({
       exchangeId: 'mexc',
       name: 'MEXC',
@@ -64,13 +51,7 @@ export function createExchangeAdapters(): ExchangeAdapter[] {
       takerFeeBps: 6.0,
       ccxtOptions: { options: { defaultType: 'swap' } },
     }),
-    new CcxtAdapter({
-      exchangeId: 'okx',
-      name: 'OKX',
-      pairSymbols: { BTC: 'BTC/USDT:USDT', ETH: 'ETH/USDT:USDT', SOL: 'SOL/USDT:USDT' },
-      takerFeeBps: 5.0,
-      ccxtOptions: { options: { defaultType: 'swap' } },
-    }),
+    new OkxAdapter(),
     // Perp DEX — native REST adapters
     new AsterAdapter(),
     new EdgeXAdapter(),

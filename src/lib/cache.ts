@@ -22,7 +22,13 @@ class SlippageCache {
     return globalForCache.__slippageCache;
   }
 
-  updateOrderbook(exchange: string, pair: string, orderbook: Orderbook, feeBps: number): void {
+  updateOrderbook(
+    exchange: string,
+    pair: string,
+    orderbook: Orderbook,
+    feeBps: number,
+    depthBook?: Orderbook | null,
+  ): void {
     const now = Date.now();
     if (!this.cache.has(exchange)) {
       this.cache.set(exchange, {
@@ -37,8 +43,9 @@ class SlippageCache {
     ec.lastUpdate = now;
 
     // Depth is a pure function of the book, so compute it on write (once per
-    // collector tick) rather than on every API request.
-    ec.depthBands.set(pair, computeDepthBand(orderbook));
+    // collector tick) rather than on every API request. Venues that only
+    // reach the band by aggregating levels supply a separate, coarser book.
+    ec.depthBands.set(pair, computeDepthBand(depthBook ?? orderbook));
 
     // Pre-compute slippage for preset amounts with actual fee
     const results: SlippageResult[] = [];

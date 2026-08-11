@@ -20,10 +20,12 @@ async function collectOnce(): Promise<void> {
     for (const pair of APP_CONFIG.pairs) {
       tasks.push(
         adapter.fetchOrderbook(pair, APP_CONFIG.orderbookDepthLimit)
-          .then(ob => {
-            if (ob) {
-              cache.updateOrderbook(adapter.name, pair, ob, adapter.getTakerFeeBps());
-            }
+          .then(async ob => {
+            if (!ob) return;
+            const depthBook = adapter.fetchDepthOrderbook
+              ? await adapter.fetchDepthOrderbook(pair, APP_CONFIG.orderbookDepthLimit).catch(() => null)
+              : null;
+            cache.updateOrderbook(adapter.name, pair, ob, adapter.getTakerFeeBps(), depthBook);
           })
           .catch(err => {
             console.error(`[Collector] ${adapter.name}/${pair}: ${(err as Error).message}`);
