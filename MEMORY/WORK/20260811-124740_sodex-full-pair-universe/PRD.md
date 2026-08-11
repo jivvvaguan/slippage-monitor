@@ -2,7 +2,7 @@
 task: 支持 SoDEX 全部永续交易对的跨所对比
 slug: 20260811-124740_sodex-full-pair-universe
 effort: advanced
-phase: verify
+phase: complete
 progress: 31/31
 mode: interactive
 started: 2026-08-11T04:47:40Z
@@ -86,7 +86,7 @@ updated: 2026-08-11T04:55:00Z
 - [x] ISC-10: Hyperliquid 由 meta 端点动态解析
 - [x] ISC-11: OKX 由 instruments 动态解析
 - [x] ISC-12: Bitget 由合约清单动态解析
-- [x] ISC-13: EdgeX 无清单端点时保留显式映射
+- [x] ISC-13: EdgeX 由 getMetaData 动态解析(原假设其无清单端点,实测存在)
 - [x] ISC-14: 某所不支持该品种时静默跳过不报错
 - [x] ISC-15: 1000X 前缀品种的倍数差异被显式处理
 
