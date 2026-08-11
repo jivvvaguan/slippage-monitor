@@ -1,5 +1,8 @@
 import { CcxtAdapter } from './exchanges/ccxt-adapter';
 import { SodexAdapter } from './exchanges/sodex';
+import { AsterAdapter } from './exchanges/aster';
+import { EdgeXAdapter } from './exchanges/edgex';
+import { LighterAdapter } from './exchanges/lighter';
 import type { ExchangeAdapter } from './exchanges/types';
 import { PAIRS, PRESET_AMOUNTS, DEFAULT_LEVERAGE } from './constants';
 
@@ -66,5 +69,9 @@ export function createExchangeAdapters(): ExchangeAdapter[] {
       takerFeeBps: 5.0,
       ccxtOptions: { options: { defaultType: 'swap' } },
     }),
+    // Perp DEX — native REST adapters
+    new AsterAdapter(),
+    new EdgeXAdapter(),
+    new LighterAdapter(),
   ];
 }

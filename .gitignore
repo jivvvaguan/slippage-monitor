@@ -1,6 +1,7 @@
 node_modules/
 dist/
 *.log
+.next/
 
 # Agentic Framework
 .ai/state/state.db

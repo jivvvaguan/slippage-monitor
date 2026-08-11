@@ -1,0 +1,362 @@
+openapi: 3.0.3
+info:
+  title: Slippage Monitor API
+  description: |
+    Real-time perpetual futures slippage and taker cost comparison across exchanges.
+    Read-only monitoring — no orders are placed.
+  version: "1.0.0"
+  contact:
+    name: Slippage Monitor
+servers:
+  - url: /api/v1
+    description: API v1
+
+paths:
+  /status:
+    get:
+      summary: System status
+      description: Returns overall system health, uptime, and per-exchange status.
+      operationId: getStatus
+      responses:
+        "200":
+          description: System status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [healthy, degraded, partial]
+                    description: Overall system status
+                  uptimeSeconds:
+                    type: number
+                    description: Seconds since the data collector started
+                  lastRefreshAt:
+                    type: string
+                    nullable: true
+                    format: date-time
+                    description: ISO timestamp of last data refresh
+                  exchanges:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                        status:
+                          type: string
+                          enum: [up, down, degraded]
+                        dataAgeSeconds:
+                          type: number
+                          nullable: true
+                  data_age_seconds:
+                    type: number
+                    nullable: true
+                  next_refresh_seconds:
+                    type: number
+                    nullable: true
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /exchanges:
+    get:
+      summary: List exchanges
+      description: Returns all monitored exchanges with their taker fee and current status.
+      operationId: getExchanges
+      responses:
+        "200":
+          description: Exchange list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  exchanges:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                          example: binance
+                        takerFeeBps:
+                          type: number
+                          example: 4.5
+                        status:
+                          type: string
+                          enum: [up, down, degraded]
+                        lastFetchedAt:
+                          type: number
+                          nullable: true
+                        dataAgeSeconds:
+                          type: number
+                          nullable: true
+                  data_age_seconds:
+                    type: number
+                    nullable: true
+                  next_refresh_seconds:
+                    type: number
+                    nullable: true
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /pairs:
+    get:
+      summary: List supported pairs
+      description: Returns all configured trading pairs.
+      operationId: getPairs
+      responses:
+        "200":
+          description: Pair list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pairs:
+                    type: array
+                    items:
+                      type: string
+                    example: ["BTC", "ETH", "SOL", "XAUT"]
+                  total:
+                    type: integer
+                    example: 4
+                  data_age_seconds:
+                    type: number
+                    nullable: true
+                  next_refresh_seconds:
+                    type: number
+                    nullable: true
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /slippage/all:
+    get:
+      summary: All slippage data
+      description: |
+        Returns slippage data for all pairs across all exchanges at preset notional sizes.
+        Optionally pass a custom amount to compute on-demand.
+      operationId: getSlippageAll
+      parameters:
+        - name: amount
+          in: query
+          required: false
+          description: Custom notional amount in USD (1 to 10,000,000). If omitted, returns preset amounts.
+          schema:
+            type: number
+            minimum: 1
+            maximum: 10000000
+            example: 100000
+      responses:
+        "200":
+          description: Slippage results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pairs:
+                    type: array
+                    items:
+                      type: string
+                  exchanges:
+                    type: array
+                    items:
+                      type: string
+                  amounts:
+                    type: array
+                    items:
+                      type: number
+                  results:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/SlippageEntry"
+                  total:
+                    type: integer
+                  data_age_seconds:
+                    type: number
+                    nullable: true
+                  next_refresh_seconds:
+                    type: number
+                    nullable: true
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /slippage/compare:
+    get:
+      summary: Compare slippage across exchanges
+      description: |
+        Compare slippage for a specific pair across all exchanges at a given notional size.
+        Returns best and worst exchange for execution cost.
+      operationId: getSlippageCompare
+      parameters:
+        - name: pair
+          in: query
+          required: true
+          description: Trading pair symbol (e.g., BTC, ETH, SOL)
+          schema:
+            type: string
+            example: BTC
+        - name: amount
+          in: query
+          required: false
+          description: Notional amount in USD (1 to 10,000,000). Defaults to 100,000.
+          schema:
+            type: number
+            minimum: 1
+            maximum: 10000000
+            default: 100000
+            example: 100000
+      responses:
+        "200":
+          description: Comparison results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pair:
+                    type: string
+                  amountUSD:
+                    type: number
+                  exchanges:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ExchangeResult"
+                  best:
+                    type: object
+                    nullable: true
+                    properties:
+                      exchange:
+                        type: string
+                      totalCostBps:
+                        type: number
+                  worst:
+                    type: object
+                    nullable: true
+                    properties:
+                      exchange:
+                        type: string
+                      totalCostBps:
+                        type: number
+                  data_age_seconds:
+                    type: number
+                    nullable: true
+                  next_refresh_seconds:
+                    type: number
+                    nullable: true
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+components:
+  schemas:
+    SlippageEntry:
+      type: object
+      properties:
+        pair:
+          type: string
+          example: BTC
+        exchange:
+          type: string
+          example: binance
+        amountUSD:
+          type: number
+          example: 100000
+        midPrice:
+          type: number
+          example: 67500.5
+        avgFillPrice:
+          type: number
+          example: 67502.3
+        slippageBps:
+          type: number
+          description: Price slippage in basis points
+          example: 0.27
+        feeBps:
+          type: number
+          description: Taker fee in basis points
+          example: 4.5
+        totalCostBps:
+          type: number
+          description: Total execution cost (slippage + fee) in basis points
+          example: 4.77
+        costPctOfPrincipal:
+          type: number
+          description: Total cost as percentage of principal (with leverage)
+          example: 0.477
+        insufficientLiquidity:
+          type: boolean
+          description: True if orderbook depth was insufficient to fill the full amount
+        orderbookDepthUsed:
+          type: integer
+          description: Number of orderbook levels consumed
+
+    ExchangeResult:
+      type: object
+      properties:
+        exchange:
+          type: string
+        midPrice:
+          type: number
+        avgFillPrice:
+          type: number
+        slippageBps:
+          type: number
+        feeBps:
+          type: number
+        totalCostBps:
+          type: number
+        costPctOfPrincipal:
+          type: number
+        insufficientLiquidity:
+          type: boolean
+        orderbookDepthUsed:
+          type: integer
+
+    ApiError:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Machine-readable error code
+          example: INVALID_AMOUNT
+        message:
+          type: string
+          description: Human-readable error description
+          example: "Amount must be a positive number between 1 and 10,000,000 USD."
+
+  responses:
+    BadRequest:
+      description: Bad request — invalid or missing parameters
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+
+    RateLimited:
+      description: Rate limit exceeded (60 requests per minute per IP)
+      headers:
+        X-RateLimit-Limit:
+          schema:
+            type: integer
+          description: Maximum requests per window
+        X-RateLimit-Remaining:
+          schema:
+            type: integer
+          description: Remaining requests in current window
+        X-RateLimit-Reset:
+          schema:
+            type: integer
+          description: Unix timestamp when the window resets
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+          example:
+            error: RATE_LIMIT_EXCEEDED
+            message: "Rate limit of 60 requests per minute exceeded. Retry after 45 seconds."
