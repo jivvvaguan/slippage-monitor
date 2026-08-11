@@ -25,7 +25,10 @@ export const GET = withRateLimit(async (request: NextRequest) => {
     const venues = adapters.filter(a => a.getSymbol(pair.id) !== null).length;
     return {
       id: pair.id,
-      name: market === 'perp' ? `${pair.id}-PERP` : `${pair.id}/USDC`,
+      // Spot carries no quote suffix: venues are matched on whichever pair
+      // trades most, so it is USDT on most CEXes and USDC only on SoDEX —
+      // printing one of them would be wrong for the rest of the row.
+      name: market === 'perp' ? `${pair.id}-PERP` : pair.id,
       display_name: pair.id,
       tier: pair.tier,
       multiplier: pair.multiplier,

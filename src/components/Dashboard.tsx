@@ -117,18 +117,14 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Market tabs */}
-      <div className="mb-4">
-        <MarketTabs market={market} onMarketChange={setMarket} locale={locale} />
-      </div>
-
-      {/* Pair selector */}
+      {/* Market tabs sit inline with the pair dropdown */}
       <div className="mb-4">
         <PairSelector
           selectedPair={pair}
           onPairChange={setPair}
           market={market}
           onPairMissing={setPair}
+          leading={<MarketTabs market={market} onMarketChange={setMarket} locale={locale} />}
           locale={locale}
         />
       </div>
@@ -136,7 +132,7 @@ export default function Dashboard() {
       {/* Pair info line */}
       {data && data.results.length > 0 && (
         <div className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-          {pair}{market === 'perp' ? '-PERP' : '/USDC'} · ${data.results[0]?.mid_price?.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+          {pair}{market === 'perp' ? '-PERP' : ''} · ${data.results[0]?.mid_price?.toLocaleString(undefined, { maximumFractionDigits: 2 })}
         </div>
       )}
 

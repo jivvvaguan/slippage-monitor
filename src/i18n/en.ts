@@ -1,5 +1,5 @@
 const en = {
-  title: 'Perps Slippage Monitor',
+  title: 'Slippage Monitor',
   subtitle: 'Cross-exchange perpetual futures slippage comparison',
   subtitleSpot: 'Cross-exchange spot slippage comparison',
   perps: 'Perps',

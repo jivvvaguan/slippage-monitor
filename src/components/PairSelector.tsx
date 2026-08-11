@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, type ReactNode } from 'react';
 import type { Locale } from '@/i18n';
 import { t } from '@/i18n';
 
@@ -18,10 +18,12 @@ interface Props {
   market: 'perp' | 'spot';
   /** Called when the current pair is absent from the newly loaded market. */
   onPairMissing: (fallback: string) => void;
+  /** Rendered to the left of the dropdown, on the same row. */
+  leading?: ReactNode;
   locale: Locale;
 }
 
-export default function PairSelector({ selectedPair, onPairChange, market, onPairMissing, locale }: Props) {
+export default function PairSelector({ selectedPair, onPairChange, market, onPairMissing, leading, locale }: Props) {
   const [search, setSearch] = useState('');
   const [isOpen, setIsOpen] = useState(false);
   const [pairs, setPairs] = useState<PairOption[]>([]);
@@ -61,6 +63,7 @@ export default function PairSelector({ selectedPair, onPairChange, market, onPai
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-3">
+        {leading}
         <div className="relative">
           <button
             onClick={() => setIsOpen(!isOpen)}
