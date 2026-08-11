@@ -3,7 +3,16 @@
 import type { Locale } from '@/i18n';
 import { t } from '@/i18n';
 import { formatCompactUSD } from '@/lib/format';
-import { DEFAULT_DEPTH_BAND } from '@/lib/depth';
+import { DEPTH_BANDS } from '@/lib/depth';
+
+interface DepthBandResult {
+  band_pct: number;
+  bid_usd: number;
+  ask_usd: number;
+  bid_complete: boolean;
+  ask_complete: boolean;
+  book_coverage_pct: number;
+}
 
 interface ExchangeResult {
   exchange: string;
@@ -15,11 +24,7 @@ interface ExchangeResult {
   cost_usd: number;
   cost_pct_of_principal: number;
   sufficient_liquidity: boolean;
-  depth_bid_usd: number | null;
-  depth_ask_usd: number | null;
-  depth_bid_complete: boolean | null;
-  depth_ask_complete: boolean | null;
-  depth_book_coverage_pct: number | null;
+  depth_bands: (DepthBandResult | null)[];
 }
 
 interface Props {
@@ -30,34 +35,48 @@ interface Props {
 const TH = 'py-3 px-3 font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap';
 const TD = 'py-3 px-3 tabular-nums whitespace-nowrap';
 
+/** Sub-0.01% spans would render as "±0.00%", which reads as "no book at all". */
+function formatCoverage(pct: number): string {
+  return pct < 0.01 ? '<0.01' : pct.toFixed(3);
+}
+
 /**
- * One side of the depth band. A truncated book is prefixed with ≥ because the
+ * One side of a depth band. A truncated book is prefixed with ≥ because the
  * figure is only a lower bound — without it a dense book (Binance spans just
- * ±0.09% at 500 levels) reads as shallower than a sparse one that does span
- * the band, which inverts the ranking.
+ * ±0.18% from a REST snapshot) reads as shallower than a sparse one that does
+ * span the band, which inverts the ranking.
  */
 function DepthSide({ label, usd, complete }: { label: string; usd: number | null; complete: boolean | null }) {
-  if (usd === null || complete === null) {
-    return (
-      <div className="flex items-baseline justify-end gap-1.5">
-        <span className="text-[10px] text-gray-400">{label}</span>
-        <span className="text-gray-400">—</span>
-      </div>
-    );
-  }
   return (
     <div className="flex items-baseline justify-end gap-1.5">
       <span className="text-[10px] text-gray-400">{label}</span>
-      <span className={complete ? '' : 'text-orange-600 dark:text-orange-400'}>
-        {complete ? '' : '≥'}{formatCompactUSD(usd)}
-      </span>
+      {usd === null || complete === null ? (
+        <span className="text-gray-400">—</span>
+      ) : (
+        <span className={complete ? '' : 'text-orange-600 dark:text-orange-400'}>
+          {complete ? '' : '≥'}{formatCompactUSD(usd)}
+        </span>
+      )}
     </div>
   );
 }
 
-/** Sub-0.01% spans would render as "±0.00%", which reads as "no book at all". */
-function formatCoverage(pct: number): string {
-  return pct < 0.01 ? '<0.01' : pct.toFixed(3);
+function DepthCell({ band, locale }: { band: DepthBandResult | null; locale: Locale }) {
+  const truncated = band !== null && (!band.bid_complete || !band.ask_complete);
+  return (
+    <td
+      className={`text-right ${TD}`}
+      title={truncated ? t(locale, 'depthTruncated', { band: String(band.band_pct) }) : undefined}
+    >
+      <DepthSide label={t(locale, 'depthBid')} usd={band?.bid_usd ?? null} complete={band?.bid_complete ?? null} />
+      <DepthSide label={t(locale, 'depthAsk')} usd={band?.ask_usd ?? null} complete={band?.ask_complete ?? null} />
+      {truncated && (
+        <div className="text-[10px] text-gray-400 mt-0.5">
+          {t(locale, 'depthCoverage', { pct: formatCoverage(band.book_coverage_pct) })}
+        </div>
+      )}
+    </td>
+  );
 }
 
 export default function SlippageGrid({ results, locale }: Props) {
@@ -69,15 +88,12 @@ export default function SlippageGrid({ results, locale }: Props) {
     );
   }
 
-  // Keep every band label tied to the constant the maths actually uses.
-  const band = String(DEFAULT_DEPTH_BAND * 100);
-
   const bestIdx = 0;
   const worstIdx = results.length - 1;
-  // Only a *measured* book that fell short counts as truncated — a venue with
+  // Only a *measured* band that fell short counts as truncated — a venue with
   // no depth data at all must not trigger the whole-table lower-bound notice.
-  const anyTruncated = results.some(
-    r => r.depth_bid_complete === false || r.depth_ask_complete === false,
+  const anyTruncated = results.some(r =>
+    r.depth_bands.some(b => b !== null && (!b.bid_complete || !b.ask_complete)),
   );
 
   return (
@@ -92,15 +108,17 @@ export default function SlippageGrid({ results, locale }: Props) {
             <th className={`text-right ${TH}`}>{t(locale, 'totalCost')} ({t(locale, 'bps')})</th>
             <th className={`text-right ${TH}`}>{t(locale, 'costUsd')}</th>
             <th className={`text-right ${TH}`}>{t(locale, 'costPctOfPrincipal')}</th>
-            <th className={`text-right ${TH}`}>{t(locale, 'depthBand', { band })}</th>
+            {DEPTH_BANDS.map(band => (
+              <th key={band} className={`text-right ${TH}`}>
+                {t(locale, 'depthBand', { band: String(band * 100) })}
+              </th>
+            ))}
           </tr>
         </thead>
         <tbody>
           {results.map((r, i) => {
             const isBest = i === bestIdx && results.length > 1;
             const isWorst = i === worstIdx && results.length > 1;
-            const depthTruncated =
-              r.depth_bid_complete === false || r.depth_ask_complete === false;
             return (
               <tr
                 key={r.exchange}
@@ -128,18 +146,9 @@ export default function SlippageGrid({ results, locale }: Props) {
                 </td>
                 <td className={`text-right ${TD}`}>${r.cost_usd.toFixed(2)}</td>
                 <td className={`text-right ${TD}`}>{r.cost_pct_of_principal.toFixed(3)}%</td>
-                <td
-                  className={`text-right ${TD}`}
-                  title={depthTruncated ? t(locale, 'depthTruncated', { band }) : undefined}
-                >
-                  <DepthSide label={t(locale, 'depthBid')} usd={r.depth_bid_usd} complete={r.depth_bid_complete} />
-                  <DepthSide label={t(locale, 'depthAsk')} usd={r.depth_ask_usd} complete={r.depth_ask_complete} />
-                  {depthTruncated && r.depth_book_coverage_pct !== null && (
-                    <div className="text-[10px] text-gray-400 mt-0.5">
-                      {t(locale, 'depthCoverage', { pct: formatCoverage(r.depth_book_coverage_pct) })}
-                    </div>
-                  )}
-                </td>
+                {DEPTH_BANDS.map((_, bandIdx) => (
+                  <DepthCell key={bandIdx} band={r.depth_bands[bandIdx] ?? null} locale={locale} />
+                ))}
               </tr>
             );
           })}
@@ -147,7 +156,7 @@ export default function SlippageGrid({ results, locale }: Props) {
       </table>
       {anyTruncated && (
         <div className="text-xs text-gray-500 dark:text-gray-400 mt-3 px-3 leading-relaxed">
-          {t(locale, 'depthLegend', { band })}
+          {t(locale, 'depthLegend')}
         </div>
       )}
       <div className="text-right text-xs text-gray-400 mt-2 px-3">

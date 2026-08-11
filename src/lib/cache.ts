@@ -1,12 +1,12 @@
 import type { Orderbook, SlippageResult } from './exchanges/types';
 import { calculateSlippage } from './slippage';
-import { computeDepthBand, type DepthBand } from './depth';
+import { computeDepthBands, type DepthBand } from './depth';
 import { APP_CONFIG } from './config';
 
 interface ExchangeCache {
   orderbooks: Map<string, Orderbook>;
   slippageResults: Map<string, SlippageResult[]>; // key: pair, value: results for preset amounts
-  depthBands: Map<string, DepthBand | null>; // key: pair
+  depthBands: Map<string, (DepthBand | null)[]>; // key: pair
   lastUpdate: number;
 }
 
@@ -45,7 +45,7 @@ class SlippageCache {
     // Depth is a pure function of the book, so compute it on write (once per
     // collector tick) rather than on every API request. Venues that only
     // reach the band by aggregating levels supply a separate, coarser book.
-    ec.depthBands.set(pair, computeDepthBand(depthBook ?? orderbook));
+    ec.depthBands.set(pair, computeDepthBands(depthBook ?? orderbook));
 
     // Pre-compute slippage for preset amounts with actual fee
     const results: SlippageResult[] = [];
@@ -65,8 +65,8 @@ class SlippageCache {
     return this.cache.get(exchange)?.slippageResults.get(pair) ?? [];
   }
 
-  getDepthBand(exchange: string, pair: string): DepthBand | null {
-    return this.cache.get(exchange)?.depthBands.get(pair) ?? null;
+  getDepthBands(exchange: string, pair: string): (DepthBand | null)[] {
+    return this.cache.get(exchange)?.depthBands.get(pair) ?? [];
   }
 
   getDataAge(exchange: string): number {

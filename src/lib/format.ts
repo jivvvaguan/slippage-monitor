@@ -12,22 +12,30 @@ export interface FormattedResult {
   cost_pct_of_principal: number;
   sufficient_liquidity: boolean;
   /**
-   * Notional resting within ±0.5% of mid, or null when the book could not be
-   * measured. A lower bound when the matching *_complete flag is false.
+   * One entry per configured band, in DEPTH_BANDS order. Entries are null when
+   * the book could not be measured at all, which is distinct from a measured
+   * band that fell short — see computeDepthBand.
    */
-  depth_bid_usd: number | null;
-  depth_ask_usd: number | null;
+  depth_bands: (FormattedDepthBand | null)[];
+}
+
+export interface FormattedDepthBand {
+  /** Band half-width as a percentage of mid, e.g. 0.3 or 0.5. */
+  band_pct: number;
+  /** Notional resting inside the band. A lower bound when *_complete is false. */
+  bid_usd: number;
+  ask_usd: number;
   /** False means the book was truncated inside the band — the figure is a floor. */
-  depth_bid_complete: boolean | null;
-  depth_ask_complete: boolean | null;
+  bid_complete: boolean;
+  ask_complete: boolean;
   /** How far the book actually spans from mid, as a percentage. */
-  depth_book_coverage_pct: number | null;
+  book_coverage_pct: number;
 }
 
 export function formatSlippageResult(
   result: SlippageResult,
   amount: number,
-  depth?: DepthBand | null,
+  depth: (DepthBand | null)[] = [],
 ): FormattedResult {
   return {
     exchange: result.exchange,
@@ -39,11 +47,18 @@ export function formatSlippageResult(
     cost_usd: Number((result.totalCostBps / 10000 * amount).toFixed(2)),
     cost_pct_of_principal: result.costPctOfPrincipal,
     sufficient_liquidity: !result.insufficientLiquidity,
-    depth_bid_usd: depth ? depth.bidUSD : null,
-    depth_ask_usd: depth ? depth.askUSD : null,
-    depth_bid_complete: depth ? depth.bidComplete : null,
-    depth_ask_complete: depth ? depth.askComplete : null,
-    depth_book_coverage_pct: depth ? Number((depth.bookCoverage * 100).toFixed(3)) : null,
+    depth_bands: depth.map(band =>
+      band
+        ? {
+            band_pct: Number((band.bandPct * 100).toFixed(3)),
+            bid_usd: band.bidUSD,
+            ask_usd: band.askUSD,
+            bid_complete: band.bidComplete,
+            ask_complete: band.askComplete,
+            book_coverage_pct: Number((band.bookCoverage * 100).toFixed(3)),
+          }
+        : null,
+    ),
   };
 }
 

@@ -6,7 +6,6 @@ import { HyperliquidAdapter } from './exchanges/hyperliquid';
 import { SodexAdapter } from './exchanges/sodex';
 import { AsterAdapter } from './exchanges/aster';
 import { EdgeXAdapter } from './exchanges/edgex';
-import { LighterAdapter } from './exchanges/lighter';
 import type { ExchangeAdapter } from './exchanges/types';
 import { PAIRS, PRESET_AMOUNTS, DEFAULT_LEVERAGE } from './constants';
 
@@ -55,6 +54,5 @@ export function createExchangeAdapters(): ExchangeAdapter[] {
     // Perp DEX — native REST adapters
     new AsterAdapter(),
     new EdgeXAdapter(),
-    new LighterAdapter(),
   ];
 }

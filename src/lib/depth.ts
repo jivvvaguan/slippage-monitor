@@ -1,9 +1,15 @@
 import type { Orderbook } from './exchanges/types';
 
-/** Half-width of the depth band, as a fraction of mid price. 0.005 = ±0.5%. */
-export const DEFAULT_DEPTH_BAND = 0.005;
+/**
+ * Bands reported for every venue, as fractions of mid. Widening this list is
+ * the only change needed to add a column — the cache, the wire format and the
+ * grid all iterate it.
+ */
+export const DEPTH_BANDS = [0.003, 0.005] as const;
 
 export interface DepthBand {
+  /** The band this row measures, as a fraction of mid (0.005 = ±0.5%). */
+  bandPct: number;
   /** Notional USD resting on the bid side within the band. */
   bidUSD: number;
   /** Notional USD resting on the ask side within the band. */
@@ -38,7 +44,7 @@ export interface DepthBand {
  */
 export function computeDepthBand(
   orderbook: Orderbook,
-  bandPct: number = DEFAULT_DEPTH_BAND,
+  bandPct: number,
 ): DepthBand | null {
   const { midPrice, bids, asks } = orderbook;
   if (!(midPrice > 0) || bids.length === 0 || asks.length === 0) return null;
@@ -62,6 +68,7 @@ export function computeDepthBand(
   const highestAsk = asks[asks.length - 1].price;
 
   return {
+    bandPct,
     bidUSD: Number(bidUSD.toFixed(2)),
     askUSD: Number(askUSD.toFixed(2)),
     bidComplete: lowestBid < floor,
@@ -70,4 +77,9 @@ export function computeDepthBand(
       Math.min((midPrice - lowestBid) / midPrice, (highestAsk - midPrice) / midPrice).toFixed(6),
     ),
   };
+}
+
+/** Every configured band for one book, in DEPTH_BANDS order. */
+export function computeDepthBands(orderbook: Orderbook): (DepthBand | null)[] {
+  return DEPTH_BANDS.map(band => computeDepthBand(orderbook, band));
 }

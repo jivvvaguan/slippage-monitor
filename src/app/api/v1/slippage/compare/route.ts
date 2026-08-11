@@ -34,7 +34,7 @@ export const GET = withRateLimit(async (request: NextRequest) => {
   for (const adapter of adapters) {
     // Depth was computed once when the collector wrote this book.
     const ob = cache.getOrderbook(adapter.name, pair);
-    const depth = cache.getDepthBand(adapter.name, pair);
+    const depth = cache.getDepthBands(adapter.name, pair);
 
     if (isPreset && leverage === APP_CONFIG.defaultLeverage && side === 'buy') {
       const precomputed = cache.getPrecomputedSlippage(adapter.name, pair);

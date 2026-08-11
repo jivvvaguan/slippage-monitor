@@ -301,22 +301,61 @@ components:
       properties:
         exchange:
           type: string
-        midPrice:
+        mid_price:
           type: number
-        avgFillPrice:
+        avg_fill_price:
           type: number
-        slippageBps:
+        slippage_bps:
           type: number
-        feeBps:
+        fee_bps:
           type: number
-        totalCostBps:
+        total_cost_bps:
           type: number
-        costPctOfPrincipal:
+        cost_usd:
           type: number
-        insufficientLiquidity:
+          description: Total execution cost in USD for the requested amount
+        cost_pct_of_principal:
+          type: number
+          description: Total cost as a percentage of principal (with leverage)
+        sufficient_liquidity:
           type: boolean
-        orderbookDepthUsed:
-          type: integer
+          description: False if the book could not fill the full requested amount
+        depth_bands:
+          type: array
+          description: >
+            Resting notional around mid, one entry per reported band.
+            An entry is null when the book could not be measured at all,
+            which is distinct from a band that was measured but truncated.
+          items:
+            oneOf:
+              - $ref: '#/components/schemas/DepthBand'
+              - type: 'null'
+
+    DepthBand:
+      type: object
+      properties:
+        band_pct:
+          type: number
+          description: Band half-width as a percentage of mid
+          example: 0.5
+        bid_usd:
+          type: number
+          description: Notional resting on the bid side inside the band
+          example: 80900000
+        ask_usd:
+          type: number
+          example: 96400000
+        bid_complete:
+          type: boolean
+          description: >
+            False when the book was truncated inside the band, making bid_usd a
+            lower bound that must not be compared with a complete figure.
+        ask_complete:
+          type: boolean
+        book_coverage_pct:
+          type: number
+          description: How far the book actually spans from mid, as a percentage
+          example: 0.229
 
     ApiError:
       type: object

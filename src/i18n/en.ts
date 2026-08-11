@@ -19,7 +19,7 @@ const en = {
   depthAsk: 'Ask',
   depthTruncated: 'Book does not span ±{band}% — value is a lower bound',
   depthCoverage: 'book spans ±{pct}%',
-  depthLegend: 'Depth is notional resting within ±{band}% of mid. A ≥ marks a book that does not span the band, so the figure is a lower bound and is not comparable with complete ones.',
+  depthLegend: 'Depth is the notional resting inside each band. A ≥ marks a book that does not span that band, so the figure is a lower bound and is not comparable with complete ones.',
   bps: 'bps',
   best: 'Best',
   worst: 'Worst',

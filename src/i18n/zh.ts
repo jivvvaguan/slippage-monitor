@@ -19,7 +19,7 @@ const zh = {
   depthAsk: '卖',
   depthTruncated: '订单簿未铺满 ±{band}%,数值为下限',
   depthCoverage: '簿覆盖 ±{pct}%',
-  depthLegend: '深度为 ±{band}% 区间内挂单名义额。标 ≥ 者订单簿未铺满该区间,数值为下限,不可与完整值直接比较。',
+  depthLegend: '深度为对应区间内的挂单名义额。标 ≥ 者订单簿未铺满该区间,数值为下限,不可与完整值直接比较。',
   bps: 'bps',
   best: '最优',
   worst: '最差',
