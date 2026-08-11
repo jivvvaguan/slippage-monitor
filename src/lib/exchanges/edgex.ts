@@ -1,13 +1,9 @@
 import type { ExchangeAdapter, Orderbook, OrderbookEntry } from './types';
 import { computeMidPrice } from './base';
+import { rescaleOrderbook } from './normalize';
+import { splitMultiplier } from '../pairs';
 
 const BASE_URL = 'https://pro.edgex.exchange';
-
-const PAIR_CONTRACT_IDS: Record<string, string> = {
-  BTC: '10000001',
-  ETH: '10000002',
-  SOL: '10000004',
-};
 
 interface EdgeXDepthEntry {
   price: string;
@@ -29,24 +25,68 @@ interface EdgeXDepthResponse {
 
 export class EdgeXAdapter implements ExchangeAdapter {
   name = 'EdgeX';
+  /** canonical base -> { contractId, name, multiplier } */
+  private resolved = new Map<string, { contractId: string; name: string; multiplier: number }>();
+  private loaded = false;
+
+  /**
+   * Resolve contracts from EdgeX's own metadata.
+   *
+   * The previous hardcoded table mapped SOL to contract 10000004, which is
+   * BNB2USD — EdgeX was reporting BNB's price as SOL. Coin names carry a
+   * version suffix (BNB2, 1000PEPE2), so the trailing digits are stripped and
+   * the unsuffixed listing wins when a coin has both.
+   */
+  private async ensureContracts(): Promise<void> {
+    if (this.loaded) return;
+    const res = await fetch(`${BASE_URL}/api/v1/public/meta/getMetaData`);
+    const json = (await res.json()) as {
+      data?: {
+        coinList?: Array<{ coinId: string; coinName: string }>;
+        contractList?: Array<{
+          contractId: string; contractName: string; baseCoinId: string;
+          enableTrade?: boolean; enableDisplay?: boolean;
+        }>;
+      };
+    };
+    const coins = new Map((json.data?.coinList ?? []).map(c => [c.coinId, c.coinName]));
+
+    for (const c of json.data?.contractList ?? []) {
+      if (c.enableTrade === false || c.enableDisplay === false) continue;
+      const coinName = coins.get(c.baseCoinId);
+      if (!coinName) continue;
+
+      const unversioned = /^(.*[A-Z])\d+$/.exec(coinName)?.[1] ?? coinName;
+      const { base, multiplier } = splitMultiplier(unversioned);
+      const existing = this.resolved.get(base);
+      // Prefer the listing whose coin name carries no version suffix.
+      if (existing && existing.name === base) continue;
+      this.resolved.set(base, { contractId: c.contractId, name: unversioned, multiplier });
+    }
+    this.loaded = true;
+  }
 
   getTakerFeeBps(): number {
     return 5.0; // 0.05% taker fee
   }
 
   getSymbol(pair: string): string | null {
-    return PAIR_CONTRACT_IDS[pair] ? `${pair}USD` : null;
+    const entry = this.resolved.get(splitMultiplier(pair).base);
+    return entry ? `${entry.name}USD` : null;
   }
 
   async getSupportedPairs(): Promise<string[]> {
-    return Object.keys(PAIR_CONTRACT_IDS);
+    await this.ensureContracts();
+    return [...this.resolved.keys()];
   }
 
   async fetchOrderbook(pair: string, limit: number): Promise<Orderbook | null> {
-    const contractId = PAIR_CONTRACT_IDS[pair];
-    if (!contractId) return null;
-
     try {
+      await this.ensureContracts();
+      const entry = this.resolved.get(splitMultiplier(pair).base);
+      if (!entry) return null;
+      const { contractId, name, multiplier } = entry;
+
       const level = limit > 15 ? '200' : '15';
       const url = `${BASE_URL}/api/v1/public/quote/getDepth?contractId=${contractId}&level=${level}`;
       const res = await fetch(url);
@@ -75,14 +115,19 @@ export class EdgeXAdapter implements ExchangeAdapter {
         .filter((e) => e.amount > 0)
         .sort((a, b) => b.price - a.price);
 
-      return {
-        exchange: this.name,
-        symbol: `${pair}/USD`,
-        bids,
-        asks,
-        timestamp: Date.now(),
-        midPrice: computeMidPrice(bids, asks),
-      };
+      if (bids.length === 0 || asks.length === 0) return null;
+
+      return rescaleOrderbook(
+        {
+          exchange: this.name,
+          symbol: `${name}USD`,
+          bids,
+          asks,
+          timestamp: Date.now(),
+          midPrice: computeMidPrice(bids, asks),
+        },
+        1 / multiplier,
+      );
     } catch (err) {
       console.error(
         `[EdgeX] Error fetching ${pair}: ${(err as Error).message}`,

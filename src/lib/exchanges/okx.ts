@@ -1,16 +1,11 @@
 import type { ExchangeAdapter, Orderbook, OrderbookEntry } from './types';
 import { computeMidPrice } from './base';
+import { rescaleOrderbook } from './normalize';
+import { splitMultiplier } from '../pairs';
 
 const BASE_URL = 'https://www.okx.com';
 /** books-full ceiling. */
 const MAX_LEVELS = 5000;
-
-const PAIR_INSTRUMENTS: Record<string, string> = {
-  BTC: 'BTC-USDT-SWAP',
-  ETH: 'ETH-USDT-SWAP',
-  SOL: 'SOL-USDT-SWAP',
-  // OKX lists no gold swap (neither XAUT nor PAXG), so GOLD is unsupported.
-};
 
 interface BooksFullResponse {
   code: string;
@@ -32,14 +27,17 @@ interface BooksFullResponse {
 export class OkxAdapter implements ExchangeAdapter {
   name = 'OKX';
   private contractValues = new Map<string, number>();
+  /** canonical base -> instId */
+  private instruments = new Map<string, string>();
   private instrumentsLoaded = false;
 
   getSymbol(pair: string): string | null {
-    return PAIR_INSTRUMENTS[pair] ?? null;
+    return this.instruments.get(splitMultiplier(pair).base) ?? null;
   }
 
   async getSupportedPairs(): Promise<string[]> {
-    return Object.keys(PAIR_INSTRUMENTS);
+    await this.ensureInstruments();
+    return [...this.instruments.keys()];
   }
 
   getTakerFeeBps(): number {
@@ -49,21 +47,31 @@ export class OkxAdapter implements ExchangeAdapter {
   private async ensureInstruments(): Promise<void> {
     if (this.instrumentsLoaded) return;
     const res = await fetch(`${BASE_URL}/api/v5/public/instruments?instType=SWAP`);
-    const json = (await res.json()) as { code: string; data?: Array<{ instId: string; ctVal: string }> };
+    const json = (await res.json()) as {
+      code: string;
+      data?: Array<{ instId: string; ctVal: string; state: string; settleCcy: string }>;
+    };
     if (json.code !== '0' || !json.data) throw new Error(`instruments failed: ${json.code}`);
     for (const inst of json.data) {
       const ctVal = Number(inst.ctVal);
-      if (ctVal > 0) this.contractValues.set(inst.instId, ctVal);
+      if (!(ctVal > 0) || inst.state !== 'live') continue;
+      this.contractValues.set(inst.instId, ctVal);
+      // OKX quotes the bare asset, so instId's base is already canonical.
+      const base = inst.instId.split('-')[0].toUpperCase();
+      const existing = this.instruments.get(base);
+      // Prefer USDT settlement when a coin has several swaps.
+      if (!existing || (inst.settleCcy === 'USDT' && !existing.includes('-USDT-'))) {
+        this.instruments.set(base, inst.instId);
+      }
     }
     this.instrumentsLoaded = true;
   }
 
   async fetchOrderbook(pair: string, _limit: number): Promise<Orderbook | null> {
-    const instId = this.getSymbol(pair);
-    if (!instId) return null;
-
     try {
       await this.ensureInstruments();
+      const instId = this.getSymbol(pair);
+      if (!instId) return null;
       const ctVal = this.contractValues.get(instId);
       if (!ctVal) return null;
 
@@ -82,14 +90,20 @@ export class OkxAdapter implements ExchangeAdapter {
       const asks = json.data[0].asks.map(level);
       if (bids.length === 0 || asks.length === 0) return null;
 
-      return {
-        exchange: this.name,
-        symbol: instId,
-        bids,
-        asks,
-        timestamp: Number(json.data[0].ts) || Date.now(),
-        midPrice: computeMidPrice(bids, asks),
-      };
+      // OKX quotes whatever its own instId says, which is usually the bare
+      // asset — normalising must use that, not the pair id's prefix.
+      const { multiplier } = splitMultiplier(instId.split('-')[0]);
+      return rescaleOrderbook(
+        {
+          exchange: this.name,
+          symbol: instId,
+          bids,
+          asks,
+          timestamp: Number(json.data[0].ts) || Date.now(),
+          midPrice: computeMidPrice(bids, asks),
+        },
+        1 / multiplier,
+      );
     } catch (err) {
       console.error(`[${this.name}] Error fetching ${pair}: ${(err as Error).message}`);
       return null;

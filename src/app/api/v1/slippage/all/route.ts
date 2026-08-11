@@ -5,9 +5,11 @@ import { cache } from '@/lib/cache';
 import { getAdapters } from '@/lib/collector';
 import { calculateSlippage } from '@/lib/slippage';
 import { APP_CONFIG } from '@/lib/config';
+import { pairRegistry } from '@/lib/pairs';
 import { formatSlippageResult, sortByTotalCost, validateSide, type FormattedResult } from '@/lib/format';
 
 export const GET = withRateLimit(async (request: NextRequest) => {
+  await pairRegistry.ensureFresh();
   const { searchParams } = new URL(request.url);
   const amount = Number(searchParams.get('amount')) || 100000;
   const leverage = Number(searchParams.get('leverage')) || APP_CONFIG.defaultLeverage;
@@ -17,7 +19,7 @@ export const GET = withRateLimit(async (request: NextRequest) => {
   const isPreset = APP_CONFIG.presetAmounts.includes(amount);
   const allResults: Record<string, FormattedResult[]> = {};
 
-  for (const pair of APP_CONFIG.pairs) {
+  for (const { id: pair } of pairRegistry.all()) {
     const results: FormattedResult[] = [];
     for (const adapter of adapters) {
       // Depth was computed once when the collector wrote this book.

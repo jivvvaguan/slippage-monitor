@@ -5,6 +5,8 @@ import { cache } from '@/lib/cache';
 import { getAdapters } from '@/lib/collector';
 import { calculateSlippage } from '@/lib/slippage';
 import { APP_CONFIG } from '@/lib/config';
+import { pairRegistry } from '@/lib/pairs';
+import { ensurePairFresh } from '@/lib/collector';
 import { formatSlippageResult, sortByTotalCost, validateSide, type FormattedResult } from '@/lib/format';
 
 export const GET = withRateLimit(async (request: NextRequest) => {
@@ -14,12 +16,18 @@ export const GET = withRateLimit(async (request: NextRequest) => {
   const leverage = Number(searchParams.get('leverage')) || APP_CONFIG.defaultLeverage;
   const side = validateSide(searchParams.get('side'));
 
-  if (!pair || !APP_CONFIG.pairs.includes(pair)) {
+  await pairRegistry.ensureFresh();
+  const pairInfo = pair ? pairRegistry.get(pair) : null;
+  if (!pairInfo) {
     return NextResponse.json(
-      { error: 'invalid_pair', message: `Pair must be one of: ${APP_CONFIG.pairs.join(', ')}` },
+      { error: 'invalid_pair', message: 'Unknown pair. See GET /api/v1/pairs for the current list.' },
       { status: 400 }
     );
   }
+  const pairId = pairInfo.id;
+
+  // Long-tail pairs refresh on a slower cadence; opening one pulls it current.
+  await ensurePairFresh(pairId);
   if (!amount || amount <= 0) {
     return NextResponse.json(
       { error: 'invalid_amount', message: 'Amount must be a positive number (USD)' },
@@ -33,11 +41,11 @@ export const GET = withRateLimit(async (request: NextRequest) => {
 
   for (const adapter of adapters) {
     // Depth was computed once when the collector wrote this book.
-    const ob = cache.getOrderbook(adapter.name, pair);
-    const depth = cache.getDepthBands(adapter.name, pair);
+    const ob = cache.getOrderbook(adapter.name, pairId);
+    const depth = cache.getDepthBands(adapter.name, pairId);
 
     if (isPreset && leverage === APP_CONFIG.defaultLeverage && side === 'buy') {
-      const precomputed = cache.getPrecomputedSlippage(adapter.name, pair);
+      const precomputed = cache.getPrecomputedSlippage(adapter.name, pairId);
       const match = precomputed.find(r => r.notionalUSD === amount);
       if (match) {
         results.push(formatSlippageResult(match, amount, depth));
@@ -59,7 +67,7 @@ export const GET = withRateLimit(async (request: NextRequest) => {
   const dataAge = oldestUpdate > 0 ? Math.floor((Date.now() - oldestUpdate) / 1000) : 0;
 
   return NextResponse.json({
-    pair,
+    pair: pairId,
     amount,
     leverage,
     side,

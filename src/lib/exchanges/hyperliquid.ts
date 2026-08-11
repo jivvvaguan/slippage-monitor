@@ -1,14 +1,9 @@
 import type { ExchangeAdapter, Orderbook, OrderbookEntry } from './types';
 import { computeMidPrice } from './base';
+import { rescaleOrderbook } from './normalize';
+import { splitMultiplier } from '../pairs';
 
 const INFO_URL = 'https://api.hyperliquid.xyz/info';
-
-const PAIR_COINS: Record<string, string> = {
-  BTC: 'BTC',
-  ETH: 'ETH',
-  SOL: 'SOL',
-  GOLD: 'PAXG',
-};
 
 /**
  * Significant figures for the depth book. Hyperliquid returns 20 levels per
@@ -35,13 +30,33 @@ interface L2BookResponse {
  */
 export class HyperliquidAdapter implements ExchangeAdapter {
   name = 'Hyperliquid';
+  /** canonical base -> { coin, multiplier }; Hyperliquid uses a kX prefix. */
+  private resolved = new Map<string, { coin: string; multiplier: number }>();
+  private loaded = false;
+
+  private async ensureUniverse(): Promise<void> {
+    if (this.loaded) return;
+    const res = await fetch(INFO_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'meta' }),
+    });
+    const json = (await res.json()) as { universe?: Array<{ name: string; isDelisted?: boolean }> };
+    for (const u of json.universe ?? []) {
+      if (u.isDelisted) continue;
+      const { base, multiplier } = splitMultiplier(u.name);
+      this.resolved.set(base, { coin: u.name, multiplier });
+    }
+    this.loaded = true;
+  }
 
   getSymbol(pair: string): string | null {
-    return PAIR_COINS[pair] ?? null;
+    return this.resolved.get(splitMultiplier(pair).base)?.coin ?? null;
   }
 
   async getSupportedPairs(): Promise<string[]> {
-    return Object.keys(PAIR_COINS);
+    await this.ensureUniverse();
+    return [...this.resolved.keys()];
   }
 
   getTakerFeeBps(): number {
@@ -49,10 +64,12 @@ export class HyperliquidAdapter implements ExchangeAdapter {
   }
 
   private async fetchBook(pair: string, nSigFigs?: number): Promise<Orderbook | null> {
-    const coin = this.getSymbol(pair);
-    if (!coin) return null;
-
     try {
+      await this.ensureUniverse();
+      const entry = this.resolved.get(splitMultiplier(pair).base);
+      if (!entry) return null;
+      const { coin, multiplier } = entry;
+
       const res = await fetch(INFO_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -69,14 +86,17 @@ export class HyperliquidAdapter implements ExchangeAdapter {
       const asks = json.levels[1].map(level);
       if (bids.length === 0 || asks.length === 0) return null;
 
-      return {
-        exchange: this.name,
-        symbol: coin,
-        bids,
-        asks,
-        timestamp: json.time ?? Date.now(),
-        midPrice: computeMidPrice(bids, asks),
-      };
+      return rescaleOrderbook(
+        {
+          exchange: this.name,
+          symbol: coin,
+          bids,
+          asks,
+          timestamp: json.time ?? Date.now(),
+          midPrice: computeMidPrice(bids, asks),
+        },
+        1 / multiplier,
+      );
     } catch (err) {
       console.error(`[${this.name}] Error fetching ${pair}: ${(err as Error).message}`);
       return null;

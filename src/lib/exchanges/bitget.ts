@@ -1,15 +1,10 @@
 import type { ExchangeAdapter, Orderbook, OrderbookEntry } from './types';
 import { computeMidPrice } from './base';
+import { rescaleOrderbook } from './normalize';
+import { splitMultiplier } from '../pairs';
 
 const BASE_URL = 'https://api.bitget.com';
 const PRODUCT_TYPE = 'usdt-futures';
-
-const PAIR_SYMBOLS: Record<string, string> = {
-  BTC: 'BTCUSDT',
-  ETH: 'ETHUSDT',
-  SOL: 'SOLUSDT',
-  GOLD: 'XAUTUSDT',
-};
 
 /** Native tick. Fine enough for an average fill price, ~±0.03% of book. */
 const PRECISION_FINE = 'scale0';
@@ -37,13 +32,33 @@ interface MergeDepthResponse {
  */
 export class BitgetAdapter implements ExchangeAdapter {
   name = 'Bitget';
+  /** canonical base -> { symbol, multiplier } from the contracts listing. */
+  private resolved = new Map<string, { symbol: string; multiplier: number }>();
+  private loaded = false;
+
+  private async ensureSymbols(): Promise<void> {
+    if (this.loaded) return;
+    const res = await fetch(`${BASE_URL}/api/v2/mix/market/contracts?productType=${PRODUCT_TYPE}`);
+    const json = (await res.json()) as {
+      code: string;
+      data?: Array<{ symbol: string; baseCoin: string; symbolStatus?: string }>;
+    };
+    if (json.code !== '00000' || !json.data) throw new Error(`contracts failed: ${json.code}`);
+    for (const c of json.data) {
+      if (c.symbolStatus && c.symbolStatus !== 'normal') continue;
+      const { base, multiplier } = splitMultiplier(c.baseCoin);
+      this.resolved.set(base, { symbol: c.symbol, multiplier });
+    }
+    this.loaded = true;
+  }
 
   getSymbol(pair: string): string | null {
-    return PAIR_SYMBOLS[pair] ?? null;
+    return this.resolved.get(splitMultiplier(pair).base)?.symbol ?? null;
   }
 
   async getSupportedPairs(): Promise<string[]> {
-    return Object.keys(PAIR_SYMBOLS);
+    await this.ensureSymbols();
+    return [...this.resolved.keys()];
   }
 
   getTakerFeeBps(): number {
@@ -51,10 +66,12 @@ export class BitgetAdapter implements ExchangeAdapter {
   }
 
   private async fetchBook(pair: string, precision: string): Promise<Orderbook | null> {
-    const symbol = this.getSymbol(pair);
-    if (!symbol) return null;
-
     try {
+      await this.ensureSymbols();
+      const entry = this.resolved.get(splitMultiplier(pair).base);
+      if (!entry) return null;
+      const { symbol, multiplier } = entry;
+
       const url =
         `${BASE_URL}/api/v2/mix/market/merge-depth` +
         `?symbol=${symbol}&productType=${PRODUCT_TYPE}&precision=${precision}&limit=max`;
@@ -69,14 +86,17 @@ export class BitgetAdapter implements ExchangeAdapter {
       const asks = json.data.asks.map(level);
       if (bids.length === 0 || asks.length === 0) return null;
 
-      return {
-        exchange: this.name,
-        symbol,
-        bids,
-        asks,
-        timestamp: Number(json.data.ts) || Date.now(),
-        midPrice: computeMidPrice(bids, asks),
-      };
+      return rescaleOrderbook(
+        {
+          exchange: this.name,
+          symbol,
+          bids,
+          asks,
+          timestamp: Number(json.data.ts) || Date.now(),
+          midPrice: computeMidPrice(bids, asks),
+        },
+        1 / multiplier,
+      );
     } catch (err) {
       console.error(`[${this.name}] Error fetching ${pair} (${precision}): ${(err as Error).message}`);
       return null;

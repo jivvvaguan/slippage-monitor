@@ -7,10 +7,9 @@ import { SodexAdapter } from './exchanges/sodex';
 import { AsterAdapter } from './exchanges/aster';
 import { EdgeXAdapter } from './exchanges/edgex';
 import type { ExchangeAdapter } from './exchanges/types';
-import { PAIRS, PRESET_AMOUNTS, DEFAULT_LEVERAGE } from './constants';
+import { PRESET_AMOUNTS, DEFAULT_LEVERAGE } from './constants';
 
 export interface AppConfig {
-  pairs: readonly string[];
   presetAmounts: readonly number[];
   defaultLeverage: number;
   refreshIntervalMs: number;
@@ -19,7 +18,6 @@ export interface AppConfig {
 }
 
 export const APP_CONFIG: AppConfig = {
-  pairs: PAIRS,
   presetAmounts: PRESET_AMOUNTS,
   defaultLeverage: DEFAULT_LEVERAGE,
   refreshIntervalMs: 300000, // 5 minutes
@@ -35,7 +33,6 @@ export function createExchangeAdapters(): ExchangeAdapter[] {
     new CcxtAdapter({
       exchangeId: 'bybit',
       name: 'Bybit',
-      pairSymbols: { BTC: 'BTC/USDT:USDT', ETH: 'ETH/USDT:USDT', SOL: 'SOL/USDT:USDT', GOLD: 'XAUT/USDT:USDT' },
       takerFeeBps: 5.5,
       ccxtOptions: { options: { defaultType: 'swap' } },
     }),
@@ -46,7 +43,6 @@ export function createExchangeAdapters(): ExchangeAdapter[] {
     new CcxtAdapter({
       exchangeId: 'mexc',
       name: 'MEXC',
-      pairSymbols: { BTC: 'BTC/USDT:USDT', ETH: 'ETH/USDT:USDT', SOL: 'SOL/USDT:USDT' },
       takerFeeBps: 6.0,
       ccxtOptions: { options: { defaultType: 'swap' } },
     }),
